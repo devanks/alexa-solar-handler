@@ -1,45 +1,83 @@
 // src/index.mjs
 import logger from './utils/logger.mjs';
-import { getSecret } from './utils/secrets.mjs'; // Import the new function
+import { getSecret } from './utils/secrets.mjs';
+import { generateIdToken } from './utils/gcpAuth.mjs'; // Import the new function
 
-// Read the Secret ID from environment variables
 export const handler = async (event, context) => {
+  // Read required environment variables inside the handler
   const GCP_SECRET_ID = process.env.GCP_SECRET_ID;
+  const TARGET_AUDIENCE = process.env.TARGET_AUDIENCE; // New environment variable
+
   const log = logger.child({ awsRequestId: context.awsRequestId });
   log.info({ event }, 'Received event');
 
+  // --- Variable Initialization ---
+  let statusCode = 500; // Default to error
+  let message = 'An unexpected error occurred.';
   let gcpCredentials = null;
+  let idToken = null;
+  let retrievedProjectId = null;
+  let tokenGenerated = false;
+
+  // --- Input Validation ---
   if (!GCP_SECRET_ID) {
-    log.error('GCP_SECRET_ID environment variable is not set.');
+    message = 'GCP_SECRET_ID environment variable is not set.';
+    log.error(message);
+  } else if (!TARGET_AUDIENCE) {
+    message = 'TARGET_AUDIENCE environment variable is not set.';
+    log.error(message);
   } else {
-    // Attempt to fetch the GCP credentials from Secrets Manager
+    // --- Fetch Credentials ---
+    log.info('Attempting to fetch GCP credentials.');
     gcpCredentials = await getSecret(GCP_SECRET_ID);
+
+    if (!gcpCredentials) {
+      message = 'Failed to retrieve GCP credentials. Check logs.';
+      log.error(message);
+      // Keep statusCode 500
+    } else {
+      retrievedProjectId = gcpCredentials.project_id || null;
+      log.info(
+        { projectId: retrievedProjectId },
+        'Successfully retrieved and parsed GCP credentials.'
+      );
+
+      // --- Generate ID Token ---
+      log.info('Attempting to generate Google ID token.');
+      idToken = await generateIdToken(gcpCredentials, TARGET_AUDIENCE);
+
+      if (!idToken) {
+        message =
+          'Successfully retrieved credentials, but failed to generate Google ID token. Check logs.';
+        log.error(message);
+        // Keep statusCode 500 as token generation failed
+      } else {
+        // --- Success ---
+        tokenGenerated = true;
+        statusCode = 200; // Success!
+        message =
+          'Successfully retrieved credentials and generated Google ID token.';
+        log.info(message);
+        // TODO: Next step - Use the idToken to call the target service
+      }
+    }
   }
 
-  let message;
-  if (gcpCredentials) {
-    // IMPORTANT: DO NOT log the actual credentials in production!
-    // Log only non-sensitive parts for confirmation during testing.
-    log.info(
-      { projectId: gcpCredentials.project_id }, // Example: Log only project_id
-      'Successfully retrieved and parsed GCP credentials.'
-    );
-    message = 'Successfully retrieved GCP credentials.';
-  } else {
-    log.error('Failed to retrieve GCP credentials.');
-    message = 'Failed to retrieve GCP credentials. Check logs.';
-  }
+  // --- Construct Response ---
+  // SECURITY: Do not include the full idToken in the response body!
+  // Include only non-sensitive confirmation.
+  const responseBody = {
+    message: message,
+    retrievedProjectId: retrievedProjectId,
+    tokenGenerated: tokenGenerated, // Indicate if token step was successful
+    // Example of masked token for DEBUGGING ONLY - REMOVE FOR PRODUCTION
+    // debug_token_preview: idToken ? `${idToken.substring(0, 5)}...${idToken.substring(idToken.length - 5)}` : null,
+    awsRequestId: context.awsRequestId,
+  };
 
-  // TODO: Next step - Use gcpCredentials to generate an ID token
-
-  // Modify the response to reflect the outcome
   const response = {
-    statusCode: gcpCredentials ? 200 : 500, // Return 500 if fetching failed
-    body: JSON.stringify({
-      message: message,
-      retrievedProjectId: gcpCredentials?.project_id || null, // Example detail in response
-      awsRequestId: context.awsRequestId,
-    }),
+    statusCode: statusCode,
+    body: JSON.stringify(responseBody),
     headers: {
       'Content-Type': 'application/json',
     },
@@ -50,6 +88,6 @@ export const handler = async (event, context) => {
       response: { statusCode: response.statusCode, headers: response.headers },
     },
     'Sending response'
-  ); // Avoid logging sensitive body
+  );
   return response;
 };

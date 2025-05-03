@@ -1,22 +1,16 @@
 // tests/index.test.mjs
-
-// Import Jest functions explicitly
 import {
   describe,
   it,
   expect,
-  beforeAll,
   beforeEach,
   afterEach,
   jest,
 } from '@jest/globals';
 
 // --- Mock Setup ---
-
-// Mock function for getSecret
 const mockGetSecret = jest.fn();
-
-// Mock object for the logger
+const mockGenerateIdToken = jest.fn();
 const mockLoggerInstance = {
   info: jest.fn(),
   warn: jest.fn(),
@@ -27,80 +21,93 @@ const mockLoggerInstance = {
 
 // Mock logger module
 jest.unstable_mockModule('../src/utils/logger.mjs', () => ({
-  default: mockLoggerInstance,
+  default: mockLoggerInstance, // Mock the default export
   __esModule: true,
 }));
-
 // Mock secrets module
 jest.unstable_mockModule('../src/utils/secrets.mjs', () => ({
   getSecret: mockGetSecret,
   __esModule: true,
 }));
+// Mock gcpAuth module
+jest.unstable_mockModule('../src/utils/gcpAuth.mjs', () => ({
+  generateIdToken: mockGenerateIdToken,
+  __esModule: true,
+}));
 
-// --- Dynamic Import (Deferred) ---
-let handler; // Define handler variable in the outer scope
+// --- Dynamic Import (Back to Top Level) ---
+// Import the handler *after* all mocks are defined above
+const { handler } = await import('../src/index.mjs');
 
 // --- Mock Data ---
 const MOCK_GCP_CREDENTIALS = {
   project_id: 'mock-project',
-};
+  client_email: 'test@example.com',
+  private_key: '...',
+}; // Ensure mock creds pass validation
+const MOCK_AUDIENCE = 'https://mock-target.service.com';
+const MOCK_ID_TOKEN = 'mock.id.token';
 
 // --- Test Lifecycle Hooks ---
-
-beforeAll(async () => {
-  // Dynamically import the handler *inside beforeAll*, AFTER mocks are defined
-  // Use the correct relative path
-  const handlerModule = await import('../src/index.mjs');
-  handler = handlerModule.handler; // Assign the imported handler to the outer scope variable
-});
+// beforeAll is no longer needed for the import
 
 beforeEach(() => {
-  // Reset mocks
+  // Reset all mocks
   mockGetSecret.mockClear();
+  mockGenerateIdToken.mockClear();
   mockLoggerInstance.info.mockClear();
   mockLoggerInstance.warn.mockClear();
   mockLoggerInstance.error.mockClear();
   mockLoggerInstance.debug.mockClear();
   mockLoggerInstance.child.mockClear();
 
-  // Configure default mock behavior
+  // Default success behavior
   mockGetSecret.mockResolvedValue(MOCK_GCP_CREDENTIALS);
+  mockGenerateIdToken.mockResolvedValue(MOCK_ID_TOKEN);
   mockLoggerInstance.child.mockReturnThis();
 
-  // Set environment variable
+  // Set environment variables
   process.env.GCP_SECRET_ID = 'fake-secret-id';
+  process.env.TARGET_AUDIENCE = MOCK_AUDIENCE;
 });
 
 afterEach(() => {
-  // Clean up environment variable
+  // Clean up environment variables
   delete process.env.GCP_SECRET_ID;
+  delete process.env.TARGET_AUDIENCE;
 });
+
+// afterAll not strictly needed unless restoring spies (which we aren't using here)
 
 // --- Test Suite ---
 describe('Lambda Handler', () => {
-  // Tests remain the same, but they will use the 'handler' variable
-  // that was assigned during the beforeAll hook.
-
-  it('should return a 200 status code and success message when secret is retrieved', async () => {
+  // --- Success Path ---
+  it('should return 200 and success message when secret and token are generated', async () => {
     // Arrange
     const mockEvent = {};
     const mockContext = { awsRequestId: 'test-request-id-123' };
     // Act
-    const response = await handler(mockEvent, mockContext); // Uses the handler assigned in beforeAll
+    const response = await handler(mockEvent, mockContext);
     // Assert
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.message).toBe('Successfully retrieved GCP credentials.');
+    expect(body.message).toBe(
+      'Successfully retrieved credentials and generated Google ID token.'
+    );
+    expect(body.retrievedProjectId).toBe(MOCK_GCP_CREDENTIALS.project_id);
+    expect(body.tokenGenerated).toBe(true);
     expect(mockGetSecret).toHaveBeenCalledWith('fake-secret-id');
-    expect(mockLoggerInstance.child).toHaveBeenCalledWith({
-      awsRequestId: mockContext.awsRequestId,
-    });
+    expect(mockGenerateIdToken).toHaveBeenCalledWith(
+      MOCK_GCP_CREDENTIALS,
+      MOCK_AUDIENCE
+    );
+    // Check specific log messages if needed
     expect(mockLoggerInstance.info).toHaveBeenCalledWith(
-      { projectId: MOCK_GCP_CREDENTIALS.project_id },
-      'Successfully retrieved and parsed GCP credentials.'
+      'Successfully retrieved credentials and generated Google ID token.'
     );
   });
 
+  // --- Failure Paths ---
   it('should return 500 if GCP_SECRET_ID is not set', async () => {
     // Arrange
     delete process.env.GCP_SECRET_ID;
@@ -111,17 +118,35 @@ describe('Lambda Handler', () => {
     // Assert
     expect(response.statusCode).toBe(500);
     const body = JSON.parse(response.body);
-    expect(body.message).toContain('Failed to retrieve GCP credentials');
+    expect(body.message).toBe('GCP_SECRET_ID environment variable is not set.');
     expect(mockGetSecret).not.toHaveBeenCalled();
-    expect(mockLoggerInstance.child).toHaveBeenCalledWith({
-      awsRequestId: mockContext.awsRequestId,
-    });
+    expect(mockGenerateIdToken).not.toHaveBeenCalled();
     expect(mockLoggerInstance.error).toHaveBeenCalledWith(
       'GCP_SECRET_ID environment variable is not set.'
     );
   });
 
-  it('should return 500 if getSecret fails (returns null)', async () => {
+  it('should return 500 if TARGET_AUDIENCE is not set', async () => {
+    // Arrange
+    delete process.env.TARGET_AUDIENCE;
+    const mockEvent = {};
+    const mockContext = { awsRequestId: 'test-request-id-457' };
+    // Act
+    const response = await handler(mockEvent, mockContext);
+    // Assert
+    expect(response.statusCode).toBe(500);
+    const body = JSON.parse(response.body);
+    expect(body.message).toBe(
+      'TARGET_AUDIENCE environment variable is not set.'
+    );
+    expect(mockGetSecret).not.toHaveBeenCalled();
+    expect(mockGenerateIdToken).not.toHaveBeenCalled();
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
+      'TARGET_AUDIENCE environment variable is not set.'
+    );
+  });
+
+  it('should return 500 if getSecret fails', async () => {
     // Arrange
     mockGetSecret.mockResolvedValue(null);
     const mockEvent = {};
@@ -131,13 +156,39 @@ describe('Lambda Handler', () => {
     // Assert
     expect(response.statusCode).toBe(500);
     const body = JSON.parse(response.body);
-    expect(body.message).toContain('Failed to retrieve GCP credentials');
-    expect(mockGetSecret).toHaveBeenCalledWith('fake-secret-id'); // Should be called
-    expect(mockLoggerInstance.child).toHaveBeenCalledWith({
-      awsRequestId: mockContext.awsRequestId,
-    });
+    expect(body.message).toBe(
+      'Failed to retrieve GCP credentials. Check logs.'
+    );
+    expect(body.tokenGenerated).toBe(false);
+    expect(mockGetSecret).toHaveBeenCalledWith('fake-secret-id');
+    expect(mockGenerateIdToken).not.toHaveBeenCalled();
     expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      'Failed to retrieve GCP credentials.'
+      'Failed to retrieve GCP credentials. Check logs.'
+    );
+  });
+
+  it('should return 500 if generateIdToken fails', async () => {
+    // Arrange
+    mockGenerateIdToken.mockResolvedValue(null);
+    const mockEvent = {};
+    const mockContext = { awsRequestId: 'test-request-id-101' };
+    // Act
+    const response = await handler(mockEvent, mockContext);
+    // Assert
+    expect(response.statusCode).toBe(500);
+    const body = JSON.parse(response.body);
+    expect(body.message).toBe(
+      'Successfully retrieved credentials, but failed to generate Google ID token. Check logs.'
+    );
+    expect(body.retrievedProjectId).toBe(MOCK_GCP_CREDENTIALS.project_id);
+    expect(body.tokenGenerated).toBe(false);
+    expect(mockGetSecret).toHaveBeenCalledWith('fake-secret-id');
+    expect(mockGenerateIdToken).toHaveBeenCalledWith(
+      MOCK_GCP_CREDENTIALS,
+      MOCK_AUDIENCE
+    );
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
+      'Successfully retrieved credentials, but failed to generate Google ID token. Check logs.'
     );
   });
 });

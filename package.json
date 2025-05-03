@@ -15,7 +15,8 @@
     "create-zip": "cd dist && zip -r ../lambda-package.zip ./* ./.[!.]* && cd ..",
     "package": "npm run prepare-dist && npm run install-prod-deps && npm run create-zip",
     "package-windows": "npm run prepare-dist && npm run install-prod-deps && cd dist && powershell Compress-Archive -Path .\\* -DestinationPath ..\\lambda-package.zip -Force && cd ..",
-    "//package-info": "Cleans, copies src/* to dist/src/*, copies manifests to dist/, installs prod deps in dist/, zips content of dist/"
+    "//package-info": "Cleans, copies src/* to dist/src/*, copies manifests to dist/, installs prod deps in dist/, zips content of dist/",
+    "start:local": "node src/run-local.mjs"
   },
   "keywords": [
     "alexa",
