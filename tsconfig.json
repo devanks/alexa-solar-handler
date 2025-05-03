@@ -1,0 +1,19 @@
+// tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022", // Target modern ECMAScript features compatible with Node 22
+    "module": "NodeNext", // Use Node.js's native ES module system
+    "moduleResolution": "NodeNext", // How modules are resolved
+    "lib": ["ES2022"], // Standard libraries available
+    "strict": true, // Enable all strict type-checking options
+    "esModuleInterop": true, // Allows default imports from commonjs modules
+    "skipLibCheck": true, // Skip type checking of declaration files
+    "forceConsistentCasingInFileNames": true, // Disallow inconsistently-cased references
+    "outDir": "./dist", // Output directory for compiled JavaScript
+    "rootDir": "./src", // Root directory of source files
+    "sourceMap": true, // Generate sourcemaps for debugging
+    "declaration": true // Generate corresponding '.d.ts' file
+  },
+  "include": ["src/**/*"], // Which files to include in compilation
+  "exclude": ["node_modules", "**/*.test.ts", "dist"] // Which files/dirs to exclude
+}

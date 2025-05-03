@@ -1,0 +1,53 @@
+{
+  "name": "alexa-solar-handler",
+  "version": "1.0.0",
+  "description": "Alexa skill handler for solar data",
+  "main": "src/index.mjs",
+  "type": "module",
+  "scripts": {
+    "build": "mkdir -p dist && cp -r src dist/",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "clean": "rm -rf dist lambda-package.zip",
+    "prepare-dist": "npm run clean && npm run build && cp package.json package-lock.json dist/",
+    "install-prod-deps": "cd dist && npm ci --omit=dev && cd ..",
+    "create-zip": "cd dist && zip -r ../lambda-package.zip ./* ./.[!.]* && cd ..",
+    "package": "npm run prepare-dist && npm run install-prod-deps && npm run create-zip",
+    "package-windows": "npm run prepare-dist && npm run install-prod-deps && cd dist && powershell Compress-Archive -Path .\\* -DestinationPath ..\\lambda-package.zip -Force && cd ..",
+    "//package-info": "Cleans, copies src/* to dist/src/*, copies manifests to dist/, installs prod deps in dist/, zips content of dist/"
+  },
+  "keywords": [
+    "alexa",
+    "lambda",
+    "solar",
+    "gcp"
+  ],
+  "author": "",
+  "license": "ISC",
+  "volta": {
+    "node": "22.15.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/aws-lambda": "^8.10.149",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.15.3",
+    "@typescript-eslint/eslint-plugin": "^8.31.1",
+    "@typescript-eslint/parser": "^8.31.1",
+    "eslint": "^9.26.0",
+    "eslint-config-prettier": "^10.1.2",
+    "eslint-plugin-prettier": "^5.2.6",
+    "jest": "^29.7.0",
+    "prettier": "^3.5.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.799.0",
+    "axios": "^1.9.0",
+    "google-auth-library": "^9.15.1",
+    "pino": "^9.6.0"
+  }
+}

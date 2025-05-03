@@ -1,0 +1,9 @@
+# .gitignore
+node_modules
+dist
+coverage
+.env
+*.log
+.DS_Store
+
+/lambda-package.zip
