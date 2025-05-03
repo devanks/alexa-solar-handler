@@ -1,32 +1,33 @@
 // tests/utils/gcpAuth.test.mjs
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-jest.mock('pino');         // ← now it will load __mocks__/pino.js
+jest.mock('pino'); // ← now it will load __mocks__/pino.js
 
 /* ---------- 1.  Create a logger stub we can assert on ---------- */
 export const mockPinoInstance = {
-  info : jest.fn(),
-  warn : jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
   error: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn().mockReturnThis(),   // make chaining work
+  child: jest.fn().mockReturnThis(), // make chaining work
 };
 
 /* ---------- 2.  Tell Jest to replace "pino" with our stub
                    (must happen BEFORE we import the SUT) -------- */
 jest.unstable_mockModule('pino', () => {
-  const factory = jest.fn(() => mockPinoInstance);   // default export is a fn
-  factory.stdTimeFunctions = {                       // extra property pino has
-    isoTime: jest.fn(() => '2024-01-01T00:00:00.000Z')
+  const factory = jest.fn(() => mockPinoInstance); // default export is a fn
+  factory.stdTimeFunctions = {
+    // extra property pino has
+    isoTime: jest.fn(() => '2024-01-01T00:00:00.000Z'),
   };
   return {
     __esModule: true,
-    default    : factory,
-    mockPinoInstance,          // named export so tests can import it
+    default: factory,
+    mockPinoInstance, // named export so tests can import it
   };
 });
 
 /* ---------- 3.  Mock google-auth-library the same way --------- */
-const mockFetchIdToken     = jest.fn();
+const mockFetchIdToken = jest.fn();
 const mockGetIdTokenClient = jest.fn();
 
 jest.unstable_mockModule('google-auth-library', () => ({
@@ -38,11 +39,14 @@ jest.unstable_mockModule('google-auth-library', () => ({
 
 /* ---------- 4.  Now we can load the modules that use pino ------ */
 const { generateIdToken } = await import('../../src/utils/gcpAuth.mjs');
-const { GoogleAuth }      = await import('google-auth-library');
+const { GoogleAuth } = await import('google-auth-library');
 const { mockPinoInstance: logger } = await import('pino');
 
 // --- Test Data ---
-const MOCK_CREDS = { client_email: 'test@service.account', private_key: 'fake-key-content' };
+const MOCK_CREDS = {
+  client_email: 'test@service.account',
+  private_key: 'fake-key-content',
+};
 const MOCK_AUDIENCE = 'https://your-target-service.run.app';
 const MOCK_TOKEN = 'mock.jwt.token.via.provider';
 
@@ -53,19 +57,21 @@ beforeEach(() => {
 
   // Reset google-auth-library mock implementations
   mockGetIdTokenClient.mockResolvedValue({
-    idTokenProvider: { fetchIdToken: mockFetchIdToken }
+    idTokenProvider: { fetchIdToken: mockFetchIdToken },
   });
   mockFetchIdToken.mockResolvedValue(MOCK_TOKEN);
 
   // Reset pino mock instance behavior (specifically chaining)
   // **mockPinoInstance should now be defined here**
-  if (mockPinoInstance && mockPinoInstance.child) { // Add a safety check just in case
+  if (mockPinoInstance && mockPinoInstance.child) {
+    // Add a safety check just in case
     mockPinoInstance.child.mockReturnThis();
   } else {
-    console.warn('Warning: mockPinoInstance or child method not found in beforeEach!');
+    console.warn(
+      'Warning: mockPinoInstance or child method not found in beforeEach!'
+    );
   }
 });
-
 
 // --- Test Suite ---
 describe('generateIdToken Utility (using idTokenProvider)', () => {
@@ -83,22 +89,25 @@ describe('generateIdToken Utility (using idTokenProvider)', () => {
 
     // Assert Logging (using the imported mockPinoInstance)
     expect(mockPinoInstance.info).toHaveBeenCalledWith(
-        { targetAudience: MOCK_AUDIENCE },
-        'Attempting to generate ID token via idTokenProvider.'
+      { targetAudience: MOCK_AUDIENCE },
+      'Attempting to generate ID token via idTokenProvider.'
     );
     expect(mockPinoInstance.info).toHaveBeenCalledWith(
-        { clientType: 'object' },
-        'auth.getIdTokenClient() resolved.'
+      { clientType: 'object' },
+      'auth.getIdTokenClient() resolved.'
     );
     expect(mockPinoInstance.info).toHaveBeenCalledWith(
-        'Calling client.idTokenProvider.fetchIdToken()...'
+      'Calling client.idTokenProvider.fetchIdToken()...'
     );
     expect(mockPinoInstance.info).toHaveBeenCalledWith(
-        'client.idTokenProvider.fetchIdToken() resolved.'
+      'client.idTokenProvider.fetchIdToken() resolved.'
     );
     expect(mockPinoInstance.info).toHaveBeenCalledWith(
-        expect.objectContaining({ targetAudience: MOCK_AUDIENCE, tokenLength: MOCK_TOKEN.length }),
-        'Successfully generated ID token via idTokenProvider.'
+      expect.objectContaining({
+        targetAudience: MOCK_AUDIENCE,
+        tokenLength: MOCK_TOKEN.length,
+      }),
+      'Successfully generated ID token via idTokenProvider.'
     );
     expect(mockPinoInstance.error).not.toHaveBeenCalled();
   });
@@ -106,40 +115,56 @@ describe('generateIdToken Utility (using idTokenProvider)', () => {
   it('should return null if credentials are null', async () => {
     const token = await generateIdToken(null, MOCK_AUDIENCE);
     expect(token).toBeNull();
-    expect(mockPinoInstance.error).toHaveBeenCalledWith('Invalid or missing service account credentials provided.');
+    expect(mockPinoInstance.error).toHaveBeenCalledWith(
+      'Invalid or missing service account credentials provided.'
+    );
     expect(GoogleAuth).not.toHaveBeenCalled();
   });
 
   it('should return null if credentials object is missing required fields', async () => {
     await generateIdToken({ client_email: 'only_one' }, MOCK_AUDIENCE); // Missing private_key
-    expect(mockPinoInstance.error).toHaveBeenCalledWith('Invalid or missing service account credentials provided.');
+    expect(mockPinoInstance.error).toHaveBeenCalledWith(
+      'Invalid or missing service account credentials provided.'
+    );
     mockPinoInstance.error.mockClear(); // Clear for next assertion
     await generateIdToken({ private_key: 'only_one' }, MOCK_AUDIENCE); // Missing client_email
-    expect(mockPinoInstance.error).toHaveBeenCalledWith('Invalid or missing service account credentials provided.');
+    expect(mockPinoInstance.error).toHaveBeenCalledWith(
+      'Invalid or missing service account credentials provided.'
+    );
     expect(GoogleAuth).not.toHaveBeenCalled();
   });
 
-
   it('should return null if target audience is missing or invalid', async () => {
     await generateIdToken(MOCK_CREDS, null);
-    expect(mockPinoInstance.error).toHaveBeenCalledWith('Invalid or missing target audience provided.');
+    expect(mockPinoInstance.error).toHaveBeenCalledWith(
+      'Invalid or missing target audience provided.'
+    );
     mockPinoInstance.error.mockClear();
     await generateIdToken(MOCK_CREDS, '');
-    expect(mockPinoInstance.error).toHaveBeenCalledWith('Invalid or missing target audience provided.');
+    expect(mockPinoInstance.error).toHaveBeenCalledWith(
+      'Invalid or missing target audience provided.'
+    );
     mockPinoInstance.error.mockClear();
     await generateIdToken(MOCK_CREDS, 123);
-    expect(mockPinoInstance.error).toHaveBeenCalledWith('Invalid or missing target audience provided.');
+    expect(mockPinoInstance.error).toHaveBeenCalledWith(
+      'Invalid or missing target audience provided.'
+    );
     expect(GoogleAuth).not.toHaveBeenCalled();
   });
 
   it('should return null and log error if GoogleAuth constructor throws', async () => {
     const authError = new Error('Auth constructor failed');
-    GoogleAuth.mockImplementationOnce(() => { throw authError; });
+    GoogleAuth.mockImplementationOnce(() => {
+      throw authError;
+    });
     const token = await generateIdToken(MOCK_CREDS, MOCK_AUDIENCE);
     expect(token).toBeNull();
     expect(mockPinoInstance.error).toHaveBeenCalledWith(
-        expect.objectContaining({ errName: 'Error', errMessage: 'Auth constructor failed' }),
-        'Error generating Google ID token.'
+      expect.objectContaining({
+        errName: 'Error',
+        errMessage: 'Auth constructor failed',
+      }),
+      'Error generating Google ID token.'
     );
   });
 
@@ -149,8 +174,11 @@ describe('generateIdToken Utility (using idTokenProvider)', () => {
     const token = await generateIdToken(MOCK_CREDS, MOCK_AUDIENCE);
     expect(token).toBeNull();
     expect(mockPinoInstance.error).toHaveBeenCalledWith(
-        expect.objectContaining({ errName: 'Error', errMessage: 'Failed to get client' }),
-        'Error generating Google ID token.'
+      expect.objectContaining({
+        errName: 'Error',
+        errMessage: 'Failed to get client',
+      }),
+      'Error generating Google ID token.'
     );
     expect(mockFetchIdToken).not.toHaveBeenCalled();
   });
@@ -160,12 +188,17 @@ describe('generateIdToken Utility (using idTokenProvider)', () => {
     const token = await generateIdToken(MOCK_CREDS, MOCK_AUDIENCE);
     expect(token).toBeNull();
     expect(mockPinoInstance.error).toHaveBeenCalledWith(
-        expect.objectContaining({ clientExists: true, clientType: 'object', providerExists: false }),
-        'Client or idTokenProvider or fetchIdToken function is missing/invalid.'
+      expect.objectContaining({
+        clientExists: true,
+        clientType: 'object',
+        providerExists: false,
+      }),
+      'Client or idTokenProvider or fetchIdToken function is missing/invalid.'
     );
-    expect(mockPinoInstance.debug).toHaveBeenCalledWith( // Check debug log added in defensive check
-        { clientKeys: ['someOtherProperty'] },
-        'Available keys on the received client object.'
+    expect(mockPinoInstance.debug).toHaveBeenCalledWith(
+      // Check debug log added in defensive check
+      { clientKeys: ['someOtherProperty'] },
+      'Available keys on the received client object.'
     );
     expect(mockFetchIdToken).not.toHaveBeenCalled();
   });
@@ -178,8 +211,11 @@ describe('generateIdToken Utility (using idTokenProvider)', () => {
     expect(mockGetIdTokenClient).toHaveBeenCalledWith(MOCK_AUDIENCE);
     expect(mockFetchIdToken).toHaveBeenCalledWith(MOCK_AUDIENCE);
     expect(mockPinoInstance.error).toHaveBeenCalledWith(
-        expect.objectContaining({ errName: 'Error', errMessage: 'Failed to fetch token from provider' }),
-        'Error generating Google ID token.'
+      expect.objectContaining({
+        errName: 'Error',
+        errMessage: 'Failed to fetch token from provider',
+      }),
+      'Error generating Google ID token.'
     );
   });
 
@@ -188,10 +224,13 @@ describe('generateIdToken Utility (using idTokenProvider)', () => {
     const token = await generateIdToken(MOCK_CREDS, MOCK_AUDIENCE);
     expect(token).toBeNull();
     expect(mockFetchIdToken).toHaveBeenCalledWith(MOCK_AUDIENCE);
-    expect(mockPinoInstance.error).toHaveBeenCalledWith('Failed to retrieve ID token (fetchIdToken returned null/undefined).');
+    expect(mockPinoInstance.error).toHaveBeenCalledWith(
+      'Failed to retrieve ID token (fetchIdToken returned null/undefined).'
+    );
     expect(mockPinoInstance.info).not.toHaveBeenCalledWith(
-        expect.stringMatching('Successfully generated ID token via idTokenProvider.')
+      expect.stringMatching(
+        'Successfully generated ID token via idTokenProvider.'
+      )
     );
   });
 });
-

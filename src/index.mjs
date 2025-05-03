@@ -1,93 +1,174 @@
 // src/index.mjs
-import logger from './utils/logger.mjs';
 import { getSecret } from './utils/secrets.mjs';
-import { generateIdToken } from './utils/gcpAuth.mjs'; // Import the new function
+import { generateIdToken } from './utils/gcpAuth.mjs';
+import { callGcpFunction } from './utils/gcpClient.mjs';
+import logger from './utils/logger.mjs';
 
 export const handler = async (event, context) => {
-  // Read required environment variables inside the handler
-  const GCP_SECRET_ID = process.env.GCP_SECRET_ID;
-  const TARGET_AUDIENCE = process.env.TARGET_AUDIENCE; // New environment variable
+  // Ensure context exists and has awsRequestId for robust logging
+  const awsRequestId = context?.awsRequestId || 'no-request-id';
+  const log = logger.child({ awsRequestId });
 
-  const log = logger.child({ awsRequestId: context.awsRequestId });
-  log.info({ event }, 'Received event');
+  log.info({ event: event || 'No event object provided' }, 'Received event');
 
-  // --- Variable Initialization ---
-  let statusCode = 500; // Default to error
-  let message = 'An unexpected error occurred.';
-  let gcpCredentials = null;
-  let idToken = null;
-  let retrievedProjectId = null;
-  let tokenGenerated = false;
+  // --- Environment Variable Check ---
+  const { GCP_SECRET_ID, TARGET_AUDIENCE } = process.env;
 
-  // --- Input Validation ---
   if (!GCP_SECRET_ID) {
-    message = 'GCP_SECRET_ID environment variable is not set.';
-    log.error(message);
-  } else if (!TARGET_AUDIENCE) {
-    message = 'TARGET_AUDIENCE environment variable is not set.';
-    log.error(message);
-  } else {
-    // --- Fetch Credentials ---
-    log.info('Attempting to fetch GCP credentials.');
-    gcpCredentials = await getSecret(GCP_SECRET_ID);
-
-    if (!gcpCredentials) {
-      message = 'Failed to retrieve GCP credentials. Check logs.';
-      log.error(message);
-      // Keep statusCode 500
-    } else {
-      retrievedProjectId = gcpCredentials.project_id || null;
-      log.info(
-        { projectId: retrievedProjectId },
-        'Successfully retrieved and parsed GCP credentials.'
-      );
-
-      // --- Generate ID Token ---
-      log.info('Attempting to generate Google ID token.');
-      idToken = await generateIdToken(gcpCredentials, TARGET_AUDIENCE);
-
-      if (!idToken) {
-        message =
-          'Successfully retrieved credentials, but failed to generate Google ID token. Check logs.';
-        log.error(message);
-        // Keep statusCode 500 as token generation failed
-      } else {
-        // --- Success ---
-        tokenGenerated = true;
-        statusCode = 200; // Success!
-        message =
-          'Successfully retrieved credentials and generated Google ID token.';
-        log.info(message);
-        // TODO: Next step - Use the idToken to call the target service
-      }
-    }
+    log.error('GCP_SECRET_ID environment variable not set.');
+    // **Ensure this return statement is present**
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Configuration error: GCP_SECRET_ID missing.',
+        awsRequestId,
+      }),
+    };
+  }
+  if (!TARGET_AUDIENCE) {
+    log.error('TARGET_AUDIENCE environment variable not set.');
+    // **Ensure this return statement is present**
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Configuration error: TARGET_AUDIENCE missing.',
+        awsRequestId,
+      }),
+    };
   }
 
-  // --- Construct Response ---
-  // SECURITY: Do not include the full idToken in the response body!
-  // Include only non-sensitive confirmation.
-  const responseBody = {
-    message: message,
-    retrievedProjectId: retrievedProjectId,
-    tokenGenerated: tokenGenerated, // Indicate if token step was successful
-    // Example of masked token for DEBUGGING ONLY - REMOVE FOR PRODUCTION
-    // debug_token_preview: idToken ? `${idToken.substring(0, 5)}...${idToken.substring(idToken.length - 5)}` : null,
-    awsRequestId: context.awsRequestId,
-  };
+  // --- Get GCP Credentials ---
+  log.info({ secretId: GCP_SECRET_ID }, 'Attempting to fetch GCP credentials.'); // Log which secret is being fetched
+  let credentials;
+  try {
+    credentials = await getSecret(GCP_SECRET_ID);
+  } catch (error) {
+    // Catch potential errors *during* secret fetching itself
+    log.error({ err: error }, 'Error occurred while calling getSecret.');
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Error retrieving GCP credentials.',
+        error: error.message,
+        awsRequestId,
+      }),
+    };
+  }
 
-  const response = {
-    statusCode: statusCode,
-    body: JSON.stringify(responseBody),
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  };
-
+  if (!credentials) {
+    log.error(
+      'Failed to retrieve GCP credentials from Secrets Manager (getSecret returned null/undefined).'
+    );
+    // **Ensure this return statement is present**
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Failed to retrieve GCP credentials.',
+        awsRequestId,
+      }),
+    };
+  }
+  // Log success only after validation
   log.info(
-    {
-      response: { statusCode: response.statusCode, headers: response.headers },
-    },
-    'Sending response'
+    { projectId: credentials.project_id },
+    'Successfully retrieved and parsed GCP credentials.'
   );
-  return response;
+
+  // --- Generate Google ID Token ---
+  log.info('Attempting to generate Google ID token.');
+  let idToken;
+  try {
+    idToken = await generateIdToken(credentials, TARGET_AUDIENCE);
+  } catch (error) {
+    // Catch potential errors *during* token generation itself
+    log.error({ err: error }, 'Error occurred while calling generateIdToken.');
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Error generating Google ID token.',
+        error: error.message,
+        awsRequestId,
+      }),
+    };
+  }
+
+  if (!idToken) {
+    log.error(
+      'Failed to generate Google ID token after retrieving credentials (generateIdToken returned null/undefined).'
+    );
+    // **Ensure this return statement is present**
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message:
+          'Successfully retrieved credentials, but failed to generate Google ID token. Check logs.',
+        retrievedProjectId: credentials.project_id, // Include context if available
+        tokenGenerated: false,
+        awsRequestId,
+      }),
+    };
+  }
+  // Log success only after validation
+  log.info('Successfully generated Google ID token.');
+
+  // --- Call Target Cloud Function using the Client ---
+  try {
+    const gcpResponse = await callGcpFunction(
+      TARGET_AUDIENCE,
+      idToken,
+      event,
+      log
+    );
+    log.info('Successfully received response via GCP client.');
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(gcpResponse),
+    };
+  } catch (error) {
+    // Catch errors specifically from the callGcpFunction client
+    log.error(
+      {
+        errName: error.name,
+        errMessage: error.message,
+        errStatusCode: error.statusCode,
+        errIsNetwork: error.isNetworkError,
+        errIsParse: error.isParseError,
+        ...(error.responseBody && {
+          errResponseBodyPreview: error.responseBody.substring(0, 200),
+        }),
+      },
+      'Error occurred during GCP Cloud Function call.'
+    );
+
+    let statusCode = 502; // Default: Bad Gateway
+    let message = 'Error calling upstream Cloud Function.'; // Default message
+
+    if (error.isNetworkError) {
+      statusCode = 504; // Gateway Timeout
+      message = 'Network error reaching upstream Cloud Function.';
+    } else if (error.isParseError) {
+      // statusCode remains 502
+      message = 'Failed to parse upstream Cloud Function response.';
+    } else if (error.statusCode) {
+      // statusCode remains 502 (or could be customized)
+      message = `Upstream Cloud Function returned status ${error.statusCode}.`;
+    }
+
+    return {
+      statusCode: statusCode,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: message,
+        errorDetails: error.message,
+        awsRequestId,
+      }),
+    };
+  }
 };
