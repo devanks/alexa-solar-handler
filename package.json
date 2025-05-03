@@ -23,7 +23,10 @@
     "solar",
     "gcp"
   ],
-  "author": "",
+  "author": {
+    "name": "Devan K S",
+    "email": "devansamba96@gmail.com"
+  },
   "license": "ISC",
   "volta": {
     "node": "22.15.0"
