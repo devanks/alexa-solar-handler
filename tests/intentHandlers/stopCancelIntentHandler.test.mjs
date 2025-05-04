@@ -1,6 +1,8 @@
 // tests/intentHandlers/stopCancelIntentHandler.test.mjs
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { handleStopOrCancelIntent } from '../../src/intentHandlers/stopCancelIntentHandler.mjs';
+// --- FIX: Import the CORRECT exported name ---
+import { handleStopCancelIntent } from '../../src/intentHandlers/stopCancelIntentHandler.mjs';
+// ---------------------------------------------
 import { buildTellResponse } from '../../src/utils/responseBuilder.mjs'; // To construct expected result
 
 describe('Stop/Cancel Intent Handler', () => {
@@ -56,7 +58,9 @@ describe('Stop/Cancel Intent Handler', () => {
 
         // Act
         // Note: Handler doesn't need gcpClient or config
-        const result = await handleStopOrCancelIntent(mockStopEvent, mockLogger);
+        // --- FIX: Call the CORRECT imported function ---
+        const result = await handleStopCancelIntent(mockStopEvent, mockLogger);
+        // -------------------------------------------
 
         // Assert
         expect(mockLogger.info).toHaveBeenCalledTimes(1);
@@ -71,7 +75,9 @@ describe('Stop/Cancel Intent Handler', () => {
         const expectedResponse = buildTellResponse(expectedSpeech);
 
         // Act
-        const result = await handleStopOrCancelIntent(mockCancelEvent, mockLogger);
+        // --- FIX: Call the CORRECT imported function ---
+        const result = await handleStopCancelIntent(mockCancelEvent, mockLogger);
+        // -------------------------------------------
 
         // Assert
         expect(mockLogger.info).toHaveBeenCalledTimes(1);

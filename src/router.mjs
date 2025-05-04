@@ -1,78 +1,84 @@
 // src/router.mjs
-import logger from './utils/logger.mjs';
 import { handleLaunchRequest } from './intentHandlers/launchRequestHandler.mjs';
 import { handleGetCurrentPowerIntent } from './intentHandlers/getCurrentPowerIntentHandler.mjs';
 import { handleGetDailyProductionIntent } from './intentHandlers/getDailyProductionIntentHandler.mjs';
+import { handleGetOnlineStatusIntent } from './intentHandlers/getOnlineStatusIntentHandler.mjs';
+import { handleGetSummaryIntent } from './intentHandlers/getSummaryIntentHandler.mjs';
 import { handleHelpIntent } from './intentHandlers/amazonHelpIntentHandler.mjs';
-import { handleStopOrCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs';
+// --- Ensure this import matches the export in stopCancelIntentHandler.mjs ---
+import { handleStopCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs';
+// ---------------------------------------------------------------------------
 import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
 import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
-// --- Import the GetOnlineStatus handler ---
-import { handleGetOnlineStatusIntent } from './intentHandlers/getOnlineStatusIntentHandler.mjs';
-// Import other handlers here as they are created
-// import { handleGetSummaryIntent } from './intentHandlers/getSummaryIntentHandler.mjs';
-
-
-const log = logger.child({ module: 'router' });
 
 /**
- * Determines the appropriate handler function based on the Alexa request type and intent.
+ * Routes the incoming Alexa request to the appropriate handler based on request type and intent name.
  *
- * @param {object} event - The incoming Alexa event object.
- * @returns {Function|null} The handler function to execute, or null if no match is found.
+ * @param {object} event - The Alexa request event object.
+ * @param {object} log - The logger instance.
+ * @returns {Function | null} - The handler function to execute, or null if no handler matches.
  */
-export const routeRequest = (event) => {
+export const routeRequest = (event, log) => {
+  // --- Debug Log: Log the entire request object at the start (optional, can be verbose) ---
+  // log.debug({ request: event.request }, 'Incoming request object details.');
+  // ------------------------------------------------------------------------------------
+
+  // Safer access to request type
   const requestType = event?.request?.type;
-  const intentName = event?.request?.intent?.name;
+  log.info({ requestType }, 'Routing request type.'); // Changed to info for better visibility
 
-  log.info({ requestType, intentName }, 'Routing request');
-
-  // --- Request Type Routing ---
-  if (requestType === 'LaunchRequest') {
-    log.info('Routing to LaunchRequest handler.');
-    return handleLaunchRequest;
+  if (!requestType) {
+    log.error('Request object or request type is missing.');
+    return null; // Cannot route without a request type
   }
 
-  if (requestType === 'IntentRequest') {
-    log.info({ intentName }, 'Routing IntentRequest.');
-    // --- Intent Name Routing (within IntentRequest) ---
+  if (requestType === 'LaunchRequest') {
+    log.debug('Matched LaunchRequest.');
+    return handleLaunchRequest;
+  } else if (requestType === 'IntentRequest') {
+    // Safer access to intent name
+    const intentName = event.request?.intent?.name;
+    log.info({ intentName }, 'Routing intent name.'); // Changed to info
+
+    if (!intentName) {
+      log.error('IntentRequest is missing intent name.');
+      // Decide how to handle this - fallback or null? Let's use fallback.
+      return handleFallbackIntent;
+    }
+
     switch (intentName) {
       case 'GetCurrentPowerIntent':
-        log.info('Routing to GetCurrentPowerIntent handler.');
+        log.debug('Matched GetCurrentPowerIntent.');
         return handleGetCurrentPowerIntent;
       case 'GetDailyProductionIntent':
-        log.info('Routing to GetDailyProductionIntent handler.');
+        log.debug('Matched GetDailyProductionIntent.');
         return handleGetDailyProductionIntent;
-        // --- Add case for GetOnlineStatusIntent ---
       case 'GetOnlineStatusIntent':
-        log.info('Routing to GetOnlineStatusIntent handler.');
+        log.debug('Matched GetOnlineStatusIntent.');
         return handleGetOnlineStatusIntent;
+      case 'GetSummaryIntent':
+        log.debug('Matched GetSummaryIntent.');
+        return handleGetSummaryIntent;
       case 'AMAZON.HelpIntent':
-        log.info('Routing to AMAZON.HelpIntent handler.');
+        log.debug('Matched AMAZON.HelpIntent.');
         return handleHelpIntent;
       case 'AMAZON.StopIntent':
       case 'AMAZON.CancelIntent':
-        log.info(`Routing ${intentName} to Stop/Cancel handler.`);
-        return handleStopOrCancelIntent;
+        log.debug(`Matched ${intentName}.`);
+        return handleStopCancelIntent;
       case 'AMAZON.FallbackIntent':
-        log.info('Routing to AMAZON.FallbackIntent handler.');
+        log.debug('Matched AMAZON.FallbackIntent.');
         return handleFallbackIntent;
-        // --- Add cases for other specific intents later ---
-        // case 'GetSummaryIntent':
-        //     log.info('Routing to GetSummaryIntent handler.');
-        //     return handleGetSummaryIntent;
       default:
-        log.warn({ intentName }, 'No specific handler found for this intent name. Routing to FallbackIntent handler.');
-        return handleFallbackIntent;
+        log.warn(`Unknown intent name encountered: ${intentName}`);
+        log.debug('Routing unknown intent to FallbackIntent.');
+        return handleFallbackIntent; // Route unknown intents to Fallback
     }
-  }
-
-  if (requestType === 'SessionEndedRequest') {
-    log.info('Routing to SessionEndedRequest handler.');
+  } else if (requestType === 'SessionEndedRequest') {
+    log.debug('Matched SessionEndedRequest.');
     return handleSessionEndedRequest;
+  } else {
+    log.warn(`Unknown request type encountered: ${requestType}`);
+    return null; // Return null for completely unknown request types
   }
-
-  // --- Fallback for unknown request types ---
-  log.warn({ requestType }, 'Received unknown request type. No handler available.');
-  return null;
 };
