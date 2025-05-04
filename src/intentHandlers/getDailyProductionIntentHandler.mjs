@@ -1,9 +1,9 @@
 // src/intentHandlers/getDailyProductionIntentHandler.mjs
 import { buildTellResponse } from '../utils/responseBuilder.mjs';
-// callGcpFunction is passed in as gcpClient
 
 /**
- * Handles the GetDailyProductionIntent - fetches total daily solar production from the GCP backend.
+ * Handles the GetDailyProductionIntent - fetches daily solar production from the GCP backend.
+ * Assumes GCP always returns: {"dailyProductionKWh":N,"currentPowerW":N,"isOnline":B,"timestamp":N}
  *
  * @param {object} event - The Alexa request event object.
  * @param {object} log - The logger instance.
@@ -11,67 +11,87 @@ import { buildTellResponse } from '../utils/responseBuilder.mjs';
  * @param {object} config - Application configuration (targetAudience, idToken).
  * @returns {Promise<object>} - A promise resolving to the Alexa response object.
  */
-export const handleGetDailyProductionIntent = async (event, log, gcpClient, config) => {
-    log.info('Handling GetDailyProductionIntent.');
+export const handleGetDailyProductionIntent = async (
+  event,
+  log,
+  gcpClient,
+  config
+) => {
+  log.info('Handling GetDailyProductionIntent.');
 
-    // --- Prepare Payload for GCP Function ---
-    // The intent name itself tells us what data is needed.
-    const gcpPayload = {
-        action: 'GET_SOLAR_DATA', // Or maybe 'GET_DAILY_PRODUCTION' if your backend prefers
-        dataType: 'daily', // <--- Key change: Request 'daily' data
-        // Add any other relevant info if needed, e.g., userId
-        // userId: event?.session?.user?.userId
-    };
+  const gcpPayload = {
+    action: 'GET_SOLAR_DATA',
+    dataType: 'daily',
+  };
 
-    try {
-        log.info({ payload: gcpPayload }, 'Calling GCP function to get daily production data.');
+  try {
+    log.info(
+      { payload: gcpPayload },
+      'Calling GCP function to get daily production data.'
+    );
 
-        // --- Call GCP Function ---
-        const gcpResponse = await gcpClient(
-            config.targetAudience,
-            config.idToken,
-            gcpPayload,
-            log // Pass logger
+    const gcpResponse = await gcpClient(
+      config.targetAudience,
+      config.idToken,
+      gcpPayload,
+      log
+    );
+
+    log.info({ gcpResponse }, 'Received response from GCP function.');
+
+    // --- Process GCP Response (NEW STRUCTURE) ---
+    // Check if the specific field we need exists and is a number
+    if (gcpResponse && typeof gcpResponse.dailyProductionKWh !== 'undefined') {
+      // Check if it's actually a number
+      if (typeof gcpResponse.dailyProductionKWh !== 'number') {
+        log.error(
+          { gcpResponse },
+          'GCP response field dailyProductionKWh was not a number.'
         );
+        return buildTellResponse(
+          'Sorry, I received unexpected data format from the solar monitor. Please try again later.'
+        );
+      }
 
-        log.info({ gcpResponse }, 'Received response from GCP function.');
+      const value = gcpResponse.dailyProductionKWh;
+      const unit = 'kilowatt hours'; // Unit is implicit in the key name 'dailyProductionKWh'
 
-        // --- Process GCP Response ---
-        // **IMPORTANT:** Adapt this section based on the *actual* JSON structure
-        // your GCP function returns successfully for daily production.
-        // It might return kWh instead of W/kW.
-        if (gcpResponse && typeof gcpResponse.value !== 'undefined' && gcpResponse.unit) {
-            const value = gcpResponse.value;
-            // Clean up unit presentation if needed (e.g., 'kWh' to 'kilowatt hours')
-            const unit = gcpResponse.unit.toLowerCase() === 'kwh' ? 'kilowatt hours' : gcpResponse.unit;
+      const speechText = `Your total solar production for the day is ${value} ${unit}.`;
 
-            // <--- Key change: Updated speech text
-            const speechText = `Your total solar production for the day is ${value} ${unit}.`;
-
-            // Use buildTellResponse to provide the data and end the session.
-            return buildTellResponse(speechText);
-
-        } else {
-            // Handle cases where GCP returned success (e.g., HTTP 200) but the data is missing/malformed
-            log.error({ gcpResponse }, 'GCP function response was successful but malformed or missing expected data (value, unit) for daily production.');
-            return buildTellResponse("Sorry, I received an unexpected response from the solar monitor. Please try again later.");
-        }
-
-    } catch (error) {
-        // --- Handle Errors from GCP Client ---
-        log.error({ err: error }, 'Error calling GCP function for GetDailyProductionIntent.');
-
-        let errorSpeech = "Sorry, I couldn't connect to the solar monitor right now.";
-        if (error.statusCode === 503) {
-            errorSpeech = "The solar monitor service seems to be temporarily unavailable. Please try again soon.";
-        } else if (error.statusCode >= 500) {
-            // <--- Minor change: Updated error detail
-            errorSpeech = "There was a problem retrieving the daily production data from the backend.";
-        } else if (error.message && error.message.toLowerCase().includes('timed out')) {
-            errorSpeech = "The request to the solar monitor timed out. Please try again.";
-        }
-        // Add more specific error handling if needed
-
-        return buildTellResponse(errorSpeech); // End session on error
+      return buildTellResponse(speechText);
+    } else {
+      // Handle cases where GCP returned success but the specific field is missing
+      log.error(
+        { gcpResponse },
+        'GCP function response was successful but missing expected field (dailyProductionKWh).'
+      );
+      return buildTellResponse(
+        'Sorry, I received an incomplete response from the solar monitor. Please try again later.'
+      );
     }
+  } catch (error) {
+    // --- Handle Errors from GCP Client (Error handling logic remains the same) ---
+    log.error(
+      { err: error },
+      'Error calling GCP function for GetDailyProductionIntent.'
+    );
+
+    let errorSpeech =
+      "Sorry, I couldn't connect to the solar monitor right now.";
+    if (error.statusCode === 503) {
+      errorSpeech =
+        'The solar monitor service seems to be temporarily unavailable. Please try again soon.';
+    } else if (error.statusCode >= 500) {
+      errorSpeech =
+        'There was a problem retrieving the daily production data from the backend.';
+    } else if (
+      error.message &&
+      error.message.toLowerCase().includes('timed out')
+    ) {
+      errorSpeech =
+        'The request to the solar monitor timed out. Please try again.';
+    }
+
+    return buildTellResponse(errorSpeech);
+  }
 };

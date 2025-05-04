@@ -8,62 +8,66 @@ import { buildAskResponse } from '../../src/utils/responseBuilder.mjs'; // We kn
 // jest.mock('../../src/utils/responseBuilder.mjs');
 
 describe('LaunchRequest Handler', () => {
+  // Create a mock logger for testing
+  const mockLogger = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    child: jest.fn(() => mockLogger), // Allow chaining if needed
+  };
 
-    // Create a mock logger for testing
-    const mockLogger = {
-        info: jest.fn(),
-        warn: jest.fn(),
-        error: jest.fn(),
-        debug: jest.fn(),
-        child: jest.fn(() => mockLogger), // Allow chaining if needed
-    };
+  // Mock event object for LaunchRequest
+  const mockLaunchEvent = {
+    version: '1.0',
+    session: {
+      /* ... session details ... */
+    },
+    context: {
+      /* ... context details ... */
+    },
+    request: {
+      type: 'LaunchRequest',
+      requestId: 'amzn1.echo-api.request.xxxx',
+      timestamp: '2023-01-01T12:00:00Z',
+      locale: 'en-US',
+    },
+  };
 
-    // Mock event object for LaunchRequest
-    const mockLaunchEvent = {
-        version: '1.0',
-        session: { /* ... session details ... */ },
-        context: { /* ... context details ... */ },
-        request: {
-            type: 'LaunchRequest',
-            requestId: 'amzn1.echo-api.request.xxxx',
-            timestamp: '2023-01-01T12:00:00Z',
-            locale: 'en-US',
-        },
-    };
+  // Reset mocks before each test
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-    // Reset mocks before each test
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
+  it('should return a welcome message using buildAskResponse', async () => {
+    // Arrange
+    const expectedSpeech =
+      'Welcome to Solar Monitor! You can ask about your current solar production or daily total. What would you like to know?';
+    const expectedReprompt = "Try asking: what's my current production?";
 
-    it('should return a welcome message using buildAskResponse', async () => {
-        // Arrange
-        const expectedSpeech = "Welcome to Solar Monitor! You can ask about your current solar production or daily total. What would you like to know?";
-        const expectedReprompt = "Try asking: what's my current production?";
+    // This is the structure buildAskResponse is expected to create
+    const expectedResponse = buildAskResponse(expectedSpeech, expectedReprompt);
 
-        // This is the structure buildAskResponse is expected to create
-        const expectedResponse = buildAskResponse(expectedSpeech, expectedReprompt);
+    // Act
+    const result = await handleLaunchRequest(mockLaunchEvent, mockLogger);
 
-        // Act
-        const result = await handleLaunchRequest(mockLaunchEvent, mockLogger);
+    // Assert
+    // 1. Check the overall response structure matches what buildAskResponse creates
+    expect(result).toEqual(expectedResponse);
 
-        // Assert
-        // 1. Check the overall response structure matches what buildAskResponse creates
-        expect(result).toEqual(expectedResponse);
+    // 2. Verify the specific content (optional sanity check, already covered by above)
+    expect(result.response.outputSpeech.text).toBe(expectedSpeech);
+    expect(result.response.reprompt.outputSpeech.text).toBe(expectedReprompt);
+    expect(result.response.shouldEndSession).toBe(false);
 
-        // 2. Verify the specific content (optional sanity check, already covered by above)
-        expect(result.response.outputSpeech.text).toBe(expectedSpeech);
-        expect(result.response.reprompt.outputSpeech.text).toBe(expectedReprompt);
-        expect(result.response.shouldEndSession).toBe(false);
+    // 3. Verify logging happened
+    expect(mockLogger.info).toHaveBeenCalledTimes(1);
+    expect(mockLogger.info).toHaveBeenCalledWith('Handling LaunchRequest.');
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Ensure no errors were logged
+  });
 
-        // 3. Verify logging happened
-        expect(mockLogger.info).toHaveBeenCalledTimes(1);
-        expect(mockLogger.info).toHaveBeenCalledWith('Handling LaunchRequest.');
-        expect(mockLogger.error).not.toHaveBeenCalled(); // Ensure no errors were logged
-    });
-
-    // --- Add tests for backend interaction later if uncommented ---
-    /*
+  // --- Add tests for backend interaction later if uncommented ---
+  /*
     it('should call backend and use data if successful', async () => {
         // Arrange
         const mockGcpClient = jest.fn().mockResolvedValue({ status: 'OK' });
@@ -95,5 +99,4 @@ describe('LaunchRequest Handler', () => {
         // ... assert response is the specific error response ...
     });
     */
-
 });
