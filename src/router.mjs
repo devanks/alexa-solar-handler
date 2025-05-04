@@ -1,13 +1,16 @@
 // src/router.mjs
-import logger from './utils/logger.mjs'; // Use the base logger for routing logs if needed
+import logger from './utils/logger.mjs';
 import { handleLaunchRequest } from './intentHandlers/launchRequestHandler.mjs';
-// Import other handlers here as they are created
-// import { handleGetSolarDataIntent } from './intentHandlers/getSolarDataIntentHandler.mjs';
+// --- Import the new handlers ---
+import { handleGetCurrentPowerIntent } from './intentHandlers/getCurrentPowerIntentHandler.mjs';
+import { handleGetDailyProductionIntent } from './intentHandlers/getDailyProductionIntentHandler.mjs';
+// Import other handlers here as they are created (Help, Stop, Fallback, etc.)
 // import { handleHelpIntent } from './intentHandlers/amazonHelpIntentHandler.mjs';
 // import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
 // import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
+// import { handleStopOrCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs'; // Example
 
-const log = logger.child({ module: 'router' }); // Create a child logger specific to the router
+const log = logger.child({ module: 'router' });
 
 /**
  * Determines the appropriate handler function based on the Alexa request type and intent.
@@ -31,19 +34,32 @@ export const routeRequest = (event) => {
         log.info({ intentName }, 'Routing IntentRequest.');
         // --- Intent Name Routing (within IntentRequest) ---
         switch (intentName) {
-            // case 'GetSolarDataIntent': // Example for later
-            //     log.info('Routing to GetSolarDataIntent handler.');
-            //     return handleGetSolarDataIntent;
-            // case 'AMAZON.HelpIntent': // Example for later
+            // --- Add cases for the new intents ---
+            case 'GetCurrentPowerIntent':
+                log.info('Routing to GetCurrentPowerIntent handler.');
+                return handleGetCurrentPowerIntent;
+            case 'GetDailyProductionIntent':
+                log.info('Routing to GetDailyProductionIntent handler.');
+                return handleGetDailyProductionIntent;
+            // --- Add cases for other intents later ---
+            // case 'GetOnlineStatusIntent':
+            //     log.info('Routing to GetOnlineStatusIntent handler.');
+            //     return handleGetOnlineStatusIntent;
+            // case 'GetSummaryIntent':
+            //     log.info('Routing to GetSummaryIntent handler.');
+            //     return handleGetSummaryIntent;
+            // case 'AMAZON.HelpIntent':
             //      log.info('Routing to AMAZON.HelpIntent handler.');
             //      return handleHelpIntent;
             // case 'AMAZON.StopIntent':
             // case 'AMAZON.CancelIntent':
-            //      log.info('Routing to Stop/Cancel handler (likely SessionEnded or a Tell response).');
-            //      // Often handled similarly to SessionEnded or a simple Tell response handler
-            //      return handleStopOrCancelIntent; // Need to create this simple handler
+            //      log.info('Routing to Stop/Cancel handler.');
+            //      return handleStopOrCancelIntent;
+            // case 'AMAZON.FallbackIntent':
+            //      log.info('Routing to FallbackIntent handler.');
+            //      return handleFallbackIntent;
             default:
-                log.warn({ intentName }, 'No specific handler found for this intent name. Routing to fallback.');
+                log.warn({ intentName }, 'No specific handler found for this intent name. Routing to fallback/null.');
                 // return handleFallbackIntent; // Return a fallback handler when created
                 return null; // Or return null if no fallback exists yet
         }
@@ -52,9 +68,7 @@ export const routeRequest = (event) => {
     if (requestType === 'SessionEndedRequest') {
         log.info('Routing to SessionEndedRequest handler.');
         // return handleSessionEndedRequest; // Return the handler when created
-        // SessionEndedRequests don't return a response to Alexa, so the handler might just log/clean up.
-        // Often, we can just return null and let the main index handle it gracefully.
-        return null; // For now, SessionEnded requires no response body.
+        return null; // SessionEnded requires no response body.
     }
 
     // --- Fallback for unknown request types ---
