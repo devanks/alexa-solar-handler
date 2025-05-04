@@ -5,10 +5,9 @@ import { handleGetCurrentPowerIntent } from './intentHandlers/getCurrentPowerInt
 import { handleGetDailyProductionIntent } from './intentHandlers/getDailyProductionIntentHandler.mjs';
 import { handleHelpIntent } from './intentHandlers/amazonHelpIntentHandler.mjs';
 import { handleStopOrCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs';
-// --- Import the Fallback handler ---
 import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
-// Import other handlers here as they are created
-// import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
+// --- Import the SessionEnded handler ---
+import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
 
 const log = logger.child({ module: 'router' });
 
@@ -47,9 +46,6 @@ export const routeRequest = (event) => {
       case 'AMAZON.CancelIntent':
         log.info(`Routing ${intentName} to Stop/Cancel handler.`);
         return handleStopOrCancelIntent;
-        // --- Add explicit case for Fallback Intent ---
-        // Although it's the default, explicitly handling it is clearer
-        // and prevents it being caught by a future, more specific default.
       case 'AMAZON.FallbackIntent':
         log.info('Routing to AMAZON.FallbackIntent handler.');
         return handleFallbackIntent;
@@ -61,19 +57,18 @@ export const routeRequest = (event) => {
         //     log.info('Routing to GetSummaryIntent handler.');
         //     return handleGetSummaryIntent;
       default:
-        // --- Update default to use Fallback ---
         log.warn({ intentName }, 'No specific handler found for this intent name. Routing to FallbackIntent handler.');
-        return handleFallbackIntent; // Use Fallback for unhandled intents
+        return handleFallbackIntent;
     }
   }
 
   if (requestType === 'SessionEndedRequest') {
     log.info('Routing to SessionEndedRequest handler.');
-    // return handleSessionEndedRequest; // Return the handler when created
-    return null; // SessionEnded requires no response body.
+    // --- Return the actual handler ---
+    return handleSessionEndedRequest; // Return the handler function
   }
 
   // --- Fallback for unknown request types ---
   log.warn({ requestType }, 'Received unknown request type. No handler available.');
-  return null; // Still return null for non-Intent/Launch/SessionEnded requests
+  return null;
 };

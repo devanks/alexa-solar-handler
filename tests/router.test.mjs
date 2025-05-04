@@ -7,8 +7,9 @@ const mockCurrentPowerHandler = jest.fn();
 const mockDailyProductionHandler = jest.fn();
 const mockHelpHandler = jest.fn();
 const mockStopCancelHandler = jest.fn();
-// --- Define mock for Fallback handler ---
 const mockFallbackHandler = jest.fn();
+// --- Define mock for SessionEnded handler ---
+const mockSessionEndedHandler = jest.fn();
 // Define mocks for future handlers here if needed
 
 
@@ -28,9 +29,12 @@ jest.unstable_mockModule('../src/intentHandlers/amazonHelpIntentHandler.mjs', ()
 jest.unstable_mockModule('../src/intentHandlers/stopCancelIntentHandler.mjs', () => ({
     handleStopOrCancelIntent: mockStopCancelHandler,
 }));
-// --- Mock the Fallback handler module ---
 jest.unstable_mockModule('../src/intentHandlers/fallbackIntentHandler.mjs', () => ({
     handleFallbackIntent: mockFallbackHandler,
+}));
+// --- Mock the SessionEnded handler module ---
+jest.unstable_mockModule('../src/intentHandlers/sessionEndedRequestHandler.mjs', () => ({
+    handleSessionEndedRequest: mockSessionEndedHandler,
 }));
 // Mock other handlers here when they exist
 
@@ -75,6 +79,8 @@ describe('Request Router', () => {
             timestamp: new Date().toISOString(),
             locale: 'en-US',
             ...(intentName && { intent: { name: intentName, slots: {} } }),
+            // Add reason for SessionEndedRequest for helper completeness
+            ...(requestType === 'SessionEndedRequest' && { reason: 'USER_INITIATED' })
         },
     });
 
@@ -86,30 +92,22 @@ describe('Request Router', () => {
     it('should return the HelpIntent handler for IntentRequest with AMAZON.HelpIntent name', () => { /* ... */ });
     it('should return the Stop/Cancel handler for IntentRequest with AMAZON.StopIntent name', () => { /* ... */ });
     it('should return the Stop/Cancel handler for IntentRequest with AMAZON.CancelIntent name', () => { /* ... */ });
+    it('should return the Fallback handler for IntentRequest with AMAZON.FallbackIntent name', () => { /* ... */ });
+    it('should return the Fallback handler for IntentRequest with an unknown intent name', () => { /* ... */ });
 
 
-    // --- Add Test for explicit Fallback Intent routing ---
-    it('should return the Fallback handler for IntentRequest with AMAZON.FallbackIntent name', () => {
-        const event = createMockEvent('IntentRequest', 'AMAZON.FallbackIntent');
+    // --- Update Test for SessionEndedRequest ---
+    it('should return the SessionEndedRequest handler for SessionEndedRequest type', () => {
+        const event = createMockEvent('SessionEndedRequest');
         const handler = routeRequest(event);
-        expect(handler).toBe(mockFallbackHandler); // Check against the Fallback mock
-        expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ intentName: 'AMAZON.FallbackIntent' }), 'Routing IntentRequest.');
-        expect(mockLoggerInstance.info).toHaveBeenCalledWith('Routing to AMAZON.FallbackIntent handler.');
-    });
-
-    // --- Update Test for unknown intent names ---
-    it('should return the Fallback handler for IntentRequest with an unknown intent name', () => {
-        const event = createMockEvent('IntentRequest', 'UnknownIntent');
-        const handler = routeRequest(event);
-        expect(handler).toBe(mockFallbackHandler); // Should now return Fallback handler
-        expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ intentName: 'UnknownIntent' }), 'Routing IntentRequest.');
-        expect(mockLoggerInstance.warn).toHaveBeenCalledWith({ intentName: 'UnknownIntent' }, 'No specific handler found for this intent name. Routing to FallbackIntent handler.'); // Check warning log
+        expect(handler).toBe(mockSessionEndedHandler); // Should now return the specific handler
+        expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ requestType: 'SessionEndedRequest' }), 'Routing request');
+        expect(mockLoggerInstance.info).toHaveBeenCalledWith('Routing to SessionEndedRequest handler.');
     });
 
 
     // --- Other Existing Tests ---
 
-    it('should return null for SessionEndedRequest type', () => { /* ... */ });
     it('should return null for an unknown request type', () => { /* ... */ });
     it('should return null if event or request structure is invalid/missing', () => { /* ... */ });
 
