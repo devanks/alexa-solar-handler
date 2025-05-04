@@ -4,11 +4,11 @@ import { handleLaunchRequest } from './intentHandlers/launchRequestHandler.mjs';
 import { handleGetCurrentPowerIntent } from './intentHandlers/getCurrentPowerIntentHandler.mjs';
 import { handleGetDailyProductionIntent } from './intentHandlers/getDailyProductionIntentHandler.mjs';
 import { handleHelpIntent } from './intentHandlers/amazonHelpIntentHandler.mjs';
-// --- Import the Stop/Cancel handler ---
 import { handleStopOrCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs';
-// Import other handlers here as they are created (Fallback, etc.)
+// --- Import the Fallback handler ---
+import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
+// Import other handlers here as they are created
 // import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
-// import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
 
 const log = logger.child({ module: 'router' });
 
@@ -43,25 +43,27 @@ export const routeRequest = (event) => {
       case 'AMAZON.HelpIntent':
         log.info('Routing to AMAZON.HelpIntent handler.');
         return handleHelpIntent;
-        // --- Add cases for Stop and Cancel Intents ---
       case 'AMAZON.StopIntent':
       case 'AMAZON.CancelIntent':
-        log.info(`Routing ${intentName} to Stop/Cancel handler.`); // Log specific intent
+        log.info(`Routing ${intentName} to Stop/Cancel handler.`);
         return handleStopOrCancelIntent;
-        // --- Add cases for other intents later ---
+        // --- Add explicit case for Fallback Intent ---
+        // Although it's the default, explicitly handling it is clearer
+        // and prevents it being caught by a future, more specific default.
+      case 'AMAZON.FallbackIntent':
+        log.info('Routing to AMAZON.FallbackIntent handler.');
+        return handleFallbackIntent;
+        // --- Add cases for other specific intents later ---
         // case 'GetOnlineStatusIntent':
         //     log.info('Routing to GetOnlineStatusIntent handler.');
         //     return handleGetOnlineStatusIntent;
         // case 'GetSummaryIntent':
         //     log.info('Routing to GetSummaryIntent handler.');
         //     return handleGetSummaryIntent;
-        // case 'AMAZON.FallbackIntent':
-        //      log.info('Routing to FallbackIntent handler.');
-        //      return handleFallbackIntent;
       default:
-        log.warn({ intentName }, 'No specific handler found for this intent name. Routing to fallback/null.');
-        // return handleFallbackIntent; // Return a fallback handler when created
-        return null; // Or return null if no fallback exists yet
+        // --- Update default to use Fallback ---
+        log.warn({ intentName }, 'No specific handler found for this intent name. Routing to FallbackIntent handler.');
+        return handleFallbackIntent; // Use Fallback for unhandled intents
     }
   }
 
@@ -73,5 +75,5 @@ export const routeRequest = (event) => {
 
   // --- Fallback for unknown request types ---
   log.warn({ requestType }, 'Received unknown request type. No handler available.');
-  return null;
+  return null; // Still return null for non-Intent/Launch/SessionEnded requests
 };

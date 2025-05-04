@@ -6,10 +6,11 @@ const mockLaunchHandler = jest.fn();
 const mockCurrentPowerHandler = jest.fn();
 const mockDailyProductionHandler = jest.fn();
 const mockHelpHandler = jest.fn();
-// --- Define mock for Stop/Cancel handler ---
 const mockStopCancelHandler = jest.fn();
+// --- Define mock for Fallback handler ---
+const mockFallbackHandler = jest.fn();
 // Define mocks for future handlers here if needed
-// const mockFallbackHandler = jest.fn();
+
 
 // Use jest.unstable_mockModule for ESM mocking consistency
 jest.unstable_mockModule('../src/intentHandlers/launchRequestHandler.mjs', () => ({
@@ -24,9 +25,12 @@ jest.unstable_mockModule('../src/intentHandlers/getDailyProductionIntentHandler.
 jest.unstable_mockModule('../src/intentHandlers/amazonHelpIntentHandler.mjs', () => ({
     handleHelpIntent: mockHelpHandler,
 }));
-// --- Mock the Stop/Cancel handler module ---
 jest.unstable_mockModule('../src/intentHandlers/stopCancelIntentHandler.mjs', () => ({
     handleStopOrCancelIntent: mockStopCancelHandler,
+}));
+// --- Mock the Fallback handler module ---
+jest.unstable_mockModule('../src/intentHandlers/fallbackIntentHandler.mjs', () => ({
+    handleFallbackIntent: mockFallbackHandler,
 }));
 // Mock other handlers here when they exist
 
@@ -80,27 +84,31 @@ describe('Request Router', () => {
     it('should return the GetCurrentPowerIntent handler for IntentRequest with that name', () => { /* ... */ });
     it('should return the GetDailyProductionIntent handler for IntentRequest with that name', () => { /* ... */ });
     it('should return the HelpIntent handler for IntentRequest with AMAZON.HelpIntent name', () => { /* ... */ });
+    it('should return the Stop/Cancel handler for IntentRequest with AMAZON.StopIntent name', () => { /* ... */ });
+    it('should return the Stop/Cancel handler for IntentRequest with AMAZON.CancelIntent name', () => { /* ... */ });
 
-    // --- Add Tests for Stop and Cancel Intents ---
-    it('should return the Stop/Cancel handler for IntentRequest with AMAZON.StopIntent name', () => {
-        const event = createMockEvent('IntentRequest', 'AMAZON.StopIntent');
+
+    // --- Add Test for explicit Fallback Intent routing ---
+    it('should return the Fallback handler for IntentRequest with AMAZON.FallbackIntent name', () => {
+        const event = createMockEvent('IntentRequest', 'AMAZON.FallbackIntent');
         const handler = routeRequest(event);
-        expect(handler).toBe(mockStopCancelHandler); // Check against the Stop/Cancel mock
-        expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ intentName: 'AMAZON.StopIntent' }), 'Routing IntentRequest.');
-        expect(mockLoggerInstance.info).toHaveBeenCalledWith('Routing AMAZON.StopIntent to Stop/Cancel handler.');
+        expect(handler).toBe(mockFallbackHandler); // Check against the Fallback mock
+        expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ intentName: 'AMAZON.FallbackIntent' }), 'Routing IntentRequest.');
+        expect(mockLoggerInstance.info).toHaveBeenCalledWith('Routing to AMAZON.FallbackIntent handler.');
     });
 
-    it('should return the Stop/Cancel handler for IntentRequest with AMAZON.CancelIntent name', () => {
-        const event = createMockEvent('IntentRequest', 'AMAZON.CancelIntent');
+    // --- Update Test for unknown intent names ---
+    it('should return the Fallback handler for IntentRequest with an unknown intent name', () => {
+        const event = createMockEvent('IntentRequest', 'UnknownIntent');
         const handler = routeRequest(event);
-        expect(handler).toBe(mockStopCancelHandler); // Check against the Stop/Cancel mock
-        expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ intentName: 'AMAZON.CancelIntent' }), 'Routing IntentRequest.');
-        expect(mockLoggerInstance.info).toHaveBeenCalledWith('Routing AMAZON.CancelIntent to Stop/Cancel handler.');
+        expect(handler).toBe(mockFallbackHandler); // Should now return Fallback handler
+        expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ intentName: 'UnknownIntent' }), 'Routing IntentRequest.');
+        expect(mockLoggerInstance.warn).toHaveBeenCalledWith({ intentName: 'UnknownIntent' }, 'No specific handler found for this intent name. Routing to FallbackIntent handler.'); // Check warning log
     });
+
 
     // --- Other Existing Tests ---
 
-    it('should return null for IntentRequest with an unknown intent name', () => { /* ... */ });
     it('should return null for SessionEndedRequest type', () => { /* ... */ });
     it('should return null for an unknown request type', () => { /* ... */ });
     it('should return null if event or request structure is invalid/missing', () => { /* ... */ });
