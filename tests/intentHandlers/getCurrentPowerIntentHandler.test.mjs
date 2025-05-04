@@ -60,7 +60,7 @@ describe('GetCurrentPowerIntent Handler', () => {
         };
         // Use the globally defined mock response
         mockGcpClient.mockResolvedValue(mockFullGcpResponse);
-        const expectedSpeech = 'Your current solar production is 1500 watts.';
+        const expectedSpeech = 'Your current solar production is 1.5 kilowatts.';
         const expectedResponse = buildTellResponse(expectedSpeech);
 
         // Act

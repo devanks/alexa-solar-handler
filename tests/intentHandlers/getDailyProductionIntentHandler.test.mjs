@@ -61,7 +61,7 @@ describe('GetDailyProductionIntent Handler', () => {
     // Use the globally defined mock response
     mockGcpClient.mockResolvedValue(mockFullGcpResponse);
     const expectedSpeech =
-        'Your total solar production for the day is 27.46 kilowatt hours.';
+        'Your total solar production for the day is 27.5 kilowatt hours.';
     const expectedResponse = buildTellResponse(expectedSpeech);
 
     // Act
@@ -97,7 +97,7 @@ describe('GetDailyProductionIntent Handler', () => {
     mockGcpClient.mockResolvedValue(mockZeroProductionResponse);
 
     const expectedSpeech =
-        'Your total solar production for the day is 0 kilowatt hours.';
+        'Your total solar production for the day is 0.0 kilowatt hours.';
     const expectedResponse = buildTellResponse(expectedSpeech);
 
     // Act

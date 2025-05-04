@@ -1,5 +1,6 @@
 // src/intentHandlers/getCurrentPowerIntentHandler.mjs
 import { buildTellResponse } from '../utils/responseBuilder.mjs';
+import { formatPower } from '../utils/formatters.mjs';
 
 /**
  * Handles the GetCurrentPowerIntent - fetches current solar power from the GCP backend.
@@ -54,10 +55,8 @@ export const handleGetCurrentPowerIntent = async (
         );
       }
 
-      const value = gcpResponse.currentPowerW;
-      const unit = 'watts'; // Unit is implicit in the key name 'currentPowerW'
 
-      const speechText = `Your current solar production is ${value} ${unit}.`;
+      const speechText = `Your current solar production is ${formatPower(gcpResponse.currentPowerW)}.`;
 
       return buildTellResponse(speechText);
     } else {

@@ -1,5 +1,6 @@
 // src/intentHandlers/getDailyProductionIntentHandler.mjs
 import { buildTellResponse } from '../utils/responseBuilder.mjs';
+import { formatEnergy } from '../utils/formatters.mjs';
 
 /**
  * Handles the GetDailyProductionIntent - fetches daily solar production from the GCP backend.
@@ -53,10 +54,7 @@ export const handleGetDailyProductionIntent = async (
         );
       }
 
-      const value = gcpResponse.dailyProductionKWh;
-      const unit = 'kilowatt hours'; // Unit is implicit in the key name 'dailyProductionKWh'
-
-      const speechText = `Your total solar production for the day is ${value} ${unit}.`;
+      const speechText = `Your total solar production for the day is ${formatEnergy(gcpResponse.dailyProductionKWh)}.`;
 
       return buildTellResponse(speechText);
     } else {
