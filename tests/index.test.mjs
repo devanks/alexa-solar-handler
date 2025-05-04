@@ -1,315 +1,272 @@
 // tests/index.test.mjs
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  jest,
-} from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, beforeAll, afterAll } from '@jest/globals';
 
-// --- Mock Setup ---
-// Keep existing mocks
+// --- Mock dependencies ---
 const mockGetSecret = jest.fn();
 const mockGenerateIdToken = jest.fn();
+const mockCallGcpFunction = jest.fn();
+const mockRouteRequest = jest.fn(); // Mock the router function
+const mockSelectedHandler = jest.fn(); // Mock a generic handler function returned by router
+const mockBuildTellResponse = jest.fn(); // Mock the response builder for error cases
+
+// Use jest.unstable_mockModule for ESM mocking
+// *** CORRECTED PATHS ***
+jest.unstable_mockModule('../src/utils/secrets.mjs', () => ({ getSecret: mockGetSecret }));
+jest.unstable_mockModule('../src/utils/gcpAuth.mjs', () => ({ generateIdToken: mockGenerateIdToken }));
+jest.unstable_mockModule('../src/utils/gcpClient.mjs', () => ({ callGcpFunction: mockCallGcpFunction }));
+jest.unstable_mockModule('../src/router.mjs', () => ({ routeRequest: mockRouteRequest })); // Mock the router module
+
+// Mock response builder - Mock buildTellResponse, keep others potentially real or mock as needed
+// *** CORRECTED PATH ***
+jest.unstable_mockModule('../src/utils/responseBuilder.mjs', () => ({
+  buildTellResponse: mockBuildTellResponse,
+  // Example of keeping one real (if needed by a real handler being tested indirectly)
+  // buildAskResponse: jest.requireActual('../src/utils/responseBuilder.mjs').buildAskResponse
+  buildAskResponse: jest.fn((speech, reprompt) => ({ /* simple mock */ speech, reprompt, end: false })),
+}));
+
+// Mock Logger
 const mockLoggerInstance = {
   info: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn().mockReturnThis(),
+  child: jest.fn(),
 };
-
-// Add mock for the new client function
-const mockCallGcpFunction = jest.fn();
-
-// --- Mock Modules ---
-// Mock logger module
+mockLoggerInstance.child.mockReturnValue(mockLoggerInstance); // Ensure child returns self
+// *** CORRECTED PATH ***
 jest.unstable_mockModule('../src/utils/logger.mjs', () => ({
-  default: mockLoggerInstance,
-  __esModule: true,
-}));
-// Mock secrets module
-jest.unstable_mockModule('../src/utils/secrets.mjs', () => ({
-  getSecret: mockGetSecret,
-  __esModule: true,
-}));
-// Mock gcpAuth module
-jest.unstable_mockModule('../src/utils/gcpAuth.mjs', () => ({
-  generateIdToken: mockGenerateIdToken,
-  __esModule: true,
-}));
-// Mock the new gcpClient module
-jest.unstable_mockModule('../src/utils/gcpClient.mjs', () => ({
-  callGcpFunction: mockCallGcpFunction, // Mock the named export
-  __esModule: true,
+  default: mockLoggerInstance, // Mock the default export
 }));
 
-// --- Dynamic Import ---
-// Import the handler *after* all mocks are defined
-const { handler } = await import('../src/index.mjs');
-
-// --- Mock Data ---
-const MOCK_GCP_CREDENTIALS = {
-  project_id: 'mock-project',
-  client_email: 'test@example.com',
-  private_key: '...',
-};
-const MOCK_AUDIENCE = 'https://mock-target.service.com';
-const MOCK_ID_TOKEN = 'mock.id.token';
-const MOCK_GCP_RESPONSE = { success: true, data: 'from-gcp-function' };
-const MOCK_EVENT = { request: { type: 'LaunchRequest' } };
-const MOCK_CONTEXT = { awsRequestId: 'test-request-id-123' };
-
-// --- Test Lifecycle Hooks ---
-beforeEach(() => {
-  // Reset all mocks
-  jest.clearAllMocks(); // Use jest.clearAllMocks() for simplicity
-
-  // Default success behavior for all mocks
-  mockGetSecret.mockResolvedValue(MOCK_GCP_CREDENTIALS);
-  mockGenerateIdToken.mockResolvedValue(MOCK_ID_TOKEN);
-  mockCallGcpFunction.mockResolvedValue(MOCK_GCP_RESPONSE); // Default to successful API call
-  mockLoggerInstance.child.mockReturnThis();
-
-  // Set environment variables
-  process.env.GCP_SECRET_ID = 'fake-secret-id';
-  process.env.TARGET_AUDIENCE = MOCK_AUDIENCE;
+// --- Dynamically import the handler AFTER mocks ---
+let handler;
+let originalEnv; // Store original env for cleanup
+beforeAll(async () => {
+  originalEnv = { ...process.env }; // Store original env
+  // *** CORRECTED PATH ***
+  const indexModule = await import('../src/index.mjs');
+  handler = indexModule.handler;
 });
 
-afterEach(() => {
-  // Clean up environment variables
-  delete process.env.GCP_SECRET_ID;
-  delete process.env.TARGET_AUDIENCE;
+// --- Test Setup ---
+const MOCK_EVENT_BASE = { version: '1.0', session: {}, context: {} };
+const MOCK_CONTEXT = { awsRequestId: 'test-req-id-123' };
+const MOCK_GCP_CREDENTIALS = { project_id: 'test-proj', /* other fields */ };
+const MOCK_ID_TOKEN = 'mock-jwt-token';
+const FAKE_SECRET_ID = 'fake-secret-id';
+const FAKE_AUDIENCE = 'fake-audience-url';
+
+// Helper to create full Alexa response structure for Tell responses
+const createExpectedTellResponse = (speechText) => ({
+  version: '1.0',
+  sessionAttributes: {},
+  response: {
+    outputSpeech: {
+      type: 'PlainText',
+      text: speechText,
+    },
+    shouldEndSession: true,
+  },
 });
 
-// --- Test Suite ---
-describe('Lambda Handler', () => {
-  // --- Success Path ---
-  it('should return 200 and GCP response body on full success', async () => {
-    // Arrange (Defaults in beforeEach are sufficient)
 
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
+describe('Lambda Handler (with Router)', () => {
 
-    // Assert
-    // 1. Check Lambda response
-    expect(response.statusCode).toBe(200);
-    expect(response.headers['Content-Type']).toBe('application/json');
-    expect(JSON.parse(response.body)).toEqual(MOCK_GCP_RESPONSE); // Should forward GCP response
-
-    // 2. Check mocks were called correctly
-    expect(mockGetSecret).toHaveBeenCalledWith('fake-secret-id');
-    expect(mockGenerateIdToken).toHaveBeenCalledWith(
-      MOCK_GCP_CREDENTIALS,
-      MOCK_AUDIENCE
-    );
-    expect(mockCallGcpFunction).toHaveBeenCalledWith(
-      MOCK_AUDIENCE,
-      MOCK_ID_TOKEN,
-      MOCK_EVENT, // Ensure event is passed as payload
-      expect.objectContaining({
-        // Check logger instance was passed
-        info: expect.any(Function),
-        error: expect.any(Function),
-      })
-    );
-
-    // 3. Check key log messages
-    expect(mockLoggerInstance.info).toHaveBeenCalledWith(
-      'Successfully generated Google ID token.'
-    );
-    expect(mockLoggerInstance.info).toHaveBeenCalledWith(
-      'Successfully received response via GCP client.'
-    );
-    expect(mockLoggerInstance.error).not.toHaveBeenCalled(); // No errors logged
+  // Restore environment variables and clear mocks after all tests
+  afterAll(() => {
+    process.env = originalEnv;
+    jest.restoreAllMocks(); // Use restoreAllMocks if needed, or clearAllMocks in beforeEach
   });
 
-  // --- Failure Paths (Existing) ---
-  it('should return 500 if GCP_SECRET_ID is not set', async () => {
+  // Reset mocks and environment before each test
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Re-apply mock return values that might be cleared
+    mockLoggerInstance.child.mockReturnValue(mockLoggerInstance);
+
+    // Set default valid environment for most tests
+    process.env.GCP_SECRET_ID = FAKE_SECRET_ID;
+    process.env.TARGET_AUDIENCE = FAKE_AUDIENCE;
+
+    // Default mock implementations for success path
+    mockGetSecret.mockResolvedValue(MOCK_GCP_CREDENTIALS);
+    mockGenerateIdToken.mockResolvedValue(MOCK_ID_TOKEN);
+    mockRouteRequest.mockReturnValue(mockSelectedHandler); // Router finds a handler
+    mockSelectedHandler.mockResolvedValue({ response: 'Handler Success' }); // Mock handler returns successfully
+
+    // Configure mockBuildTellResponse to return the full structure using the helper
+    mockBuildTellResponse.mockImplementation((text) => createExpectedTellResponse(text));
+  });
+
+  // --- Success Path Test ---
+  it('should authenticate, route, call handler, and return handler response on full success', async () => {
     // Arrange
+    const mockLaunchEvent = { ...MOCK_EVENT_BASE, request: { type: 'LaunchRequest' } };
+    const expectedHandlerConfig = {
+      targetAudience: FAKE_AUDIENCE,
+      idToken: MOCK_ID_TOKEN,
+    };
+    const expectedHandlerResponse = { response: 'Handler Success' }; // Handler response can be anything
+    mockSelectedHandler.mockResolvedValue(expectedHandlerResponse);
+
+    // Act
+    const result = await handler(mockLaunchEvent, MOCK_CONTEXT);
+
+    // Assert
+    // Auth
+    expect(mockGetSecret).toHaveBeenCalledWith(FAKE_SECRET_ID); // Should be called now
+    expect(mockGenerateIdToken).toHaveBeenCalledWith(MOCK_GCP_CREDENTIALS, FAKE_AUDIENCE);
+    // Routing
+    expect(mockRouteRequest).toHaveBeenCalledWith(mockLaunchEvent);
+    // Handler Execution
+    expect(mockSelectedHandler).toHaveBeenCalledTimes(1);
+    expect(mockSelectedHandler).toHaveBeenCalledWith(
+        mockLaunchEvent,
+        mockLoggerInstance,
+        mockCallGcpFunction,
+        expectedHandlerConfig
+    );
+    // Final Response
+    expect(result).toEqual(expectedHandlerResponse);
+    // Logging
+    expect(mockLoggerInstance.info).toHaveBeenCalledWith(expect.objectContaining({ event: mockLaunchEvent }), 'Received event');
+    expect(mockLoggerInstance.info).toHaveBeenCalledWith('Successfully generated Google ID token.');
+    expect(mockLoggerInstance.info).toHaveBeenCalledWith({ handlerName: mockSelectedHandler.name }, 'Executing selected handler.');
+    expect(mockLoggerInstance.info).toHaveBeenCalledWith({ response: expectedHandlerResponse }, 'Handler execution successful.');
+    expect(mockLoggerInstance.error).not.toHaveBeenCalled();
+  });
+
+  // --- Auth Failure Tests (Use helper for expected response) ---
+  it('should return config error response if GCP_SECRET_ID is not set', async () => {
     delete process.env.GCP_SECRET_ID;
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
-    // Assert
-    expect(response.statusCode).toBe(500);
-    const body = JSON.parse(response.body);
-    expect(body.message).toContain('GCP_SECRET_ID missing'); // Adjusted message check
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'LaunchRequest' } };
+    // *** USE HELPER ***
+    const expectedResponse = createExpectedTellResponse("Sorry, the skill is not configured correctly. Missing secret ID.");
+    // Configure mock specifically for this call if needed, otherwise beforeEach handles it
+    // mockBuildTellResponse.mockReturnValue(expectedResponse);
+
+    const response = await handler(event, MOCK_CONTEXT);
+
+    expect(response).toEqual(expectedResponse); // Should match full structure now
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith('Configuration error: GCP_SECRET_ID missing.');
     expect(mockGetSecret).not.toHaveBeenCalled();
-    expect(mockGenerateIdToken).not.toHaveBeenCalled();
-    expect(mockCallGcpFunction).not.toHaveBeenCalled(); // Should not be called
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      'GCP_SECRET_ID environment variable not set.'
-    );
+    expect(mockRouteRequest).not.toHaveBeenCalled();
   });
 
-  it('should return 500 if TARGET_AUDIENCE is not set', async () => {
-    // Arrange
+  it('should return config error response if TARGET_AUDIENCE is not set', async () => {
     delete process.env.TARGET_AUDIENCE;
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
-    // Assert
-    expect(response.statusCode).toBe(500);
-    const body = JSON.parse(response.body);
-    expect(body.message).toContain('TARGET_AUDIENCE missing'); // Adjusted message check
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'LaunchRequest' } };
+    // *** USE HELPER ***
+    const expectedResponse = createExpectedTellResponse("Sorry, the skill is not configured correctly. Missing target audience.");
+    // mockBuildTellResponse.mockReturnValue(expectedResponse);
+
+    const response = await handler(event, MOCK_CONTEXT);
+
+    expect(response).toEqual(expectedResponse); // Should match full structure now
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith('Configuration error: TARGET_AUDIENCE missing.');
     expect(mockGetSecret).not.toHaveBeenCalled();
-    expect(mockGenerateIdToken).not.toHaveBeenCalled();
-    expect(mockCallGcpFunction).not.toHaveBeenCalled(); // Should not be called
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      'TARGET_AUDIENCE environment variable not set.'
-    );
+    expect(mockRouteRequest).not.toHaveBeenCalled();
   });
 
-  it('should return 500 if getSecret fails', async () => {
-    // Arrange
+  it('should return credential error response if getSecret fails', async () => {
     mockGetSecret.mockResolvedValue(null);
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
-    // Assert
-    expect(response.statusCode).toBe(500);
-    const body = JSON.parse(response.body);
-    expect(body.message).toBe('Failed to retrieve GCP credentials.'); // Adjusted message
-    expect(mockGetSecret).toHaveBeenCalledWith('fake-secret-id');
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'LaunchRequest' } };
+    // *** USE HELPER ***
+    const expectedResponse = createExpectedTellResponse("Sorry, I couldn't retrieve the necessary credentials right now. Please try again later.");
+    // mockBuildTellResponse.mockReturnValue(expectedResponse);
+
+    const response = await handler(event, MOCK_CONTEXT);
+
+    expect(response).toEqual(expectedResponse); // Should match full structure now
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith('Failed to retrieve GCP credentials from Secrets Manager (getSecret returned null/undefined).');
+    expect(mockGetSecret).toHaveBeenCalledWith(FAKE_SECRET_ID); // Verify getSecret was called
     expect(mockGenerateIdToken).not.toHaveBeenCalled();
-    expect(mockCallGcpFunction).not.toHaveBeenCalled(); // Should not be called
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      'Failed to retrieve GCP credentials from Secrets Manager (getSecret returned null/undefined).'
-    );
+    expect(mockRouteRequest).not.toHaveBeenCalled();
   });
 
-  it('should return 500 if generateIdToken fails', async () => {
-    // Arrange
+  it('should return auth error response if generateIdToken fails', async () => {
     mockGenerateIdToken.mockResolvedValue(null);
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
-    // Assert
-    expect(response.statusCode).toBe(500);
-    const body = JSON.parse(response.body);
-    // Check the specific message returned when token generation fails
-    expect(body.message).toBe(
-      'Successfully retrieved credentials, but failed to generate Google ID token. Check logs.'
-    );
-    expect(body.retrievedProjectId).toBe(MOCK_GCP_CREDENTIALS.project_id);
-    expect(body.tokenGenerated).toBe(false);
-    expect(mockGetSecret).toHaveBeenCalledWith('fake-secret-id');
-    expect(mockGenerateIdToken).toHaveBeenCalledWith(
-      MOCK_GCP_CREDENTIALS,
-      MOCK_AUDIENCE
-    );
-    expect(mockCallGcpFunction).not.toHaveBeenCalled(); // Should not be called
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      'Failed to generate Google ID token after retrieving credentials (generateIdToken returned null/undefined).'
-    );
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'LaunchRequest' } };
+    // *** USE HELPER ***
+    const expectedResponse = createExpectedTellResponse("Sorry, I encountered an issue authenticating. Please try again later.");
+    // mockBuildTellResponse.mockReturnValue(expectedResponse);
+
+    const response = await handler(event, MOCK_CONTEXT);
+
+    expect(response).toEqual(expectedResponse); // Should match full structure now
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith('Failed to generate Google ID token after retrieving credentials (generateIdToken returned null/undefined).');
+    expect(mockGetSecret).toHaveBeenCalledWith(FAKE_SECRET_ID); // Verify prerequisites
+    expect(mockGenerateIdToken).toHaveBeenCalledWith(MOCK_GCP_CREDENTIALS, FAKE_AUDIENCE); // Verify call
+    expect(mockRouteRequest).not.toHaveBeenCalled();
   });
 
-  // --- NEW Failure Paths (API Client) ---
 
-  it('should return 502 if callGcpFunction rejects with a non-OK status error', async () => {
-    // Arrange
-    const upstreamError = new Error(
-      'Cloud Function call failed with status 403'
-    );
-    upstreamError.statusCode = 403;
-    upstreamError.responseBody = 'Forbidden access';
-    upstreamError.isApiClientError = true;
-    mockCallGcpFunction.mockRejectedValue(upstreamError);
+  // --- Routing Failure / No Handler Test ---
+  it('should return fallback response if router returns null (and not SessionEnded)', async () => {
+    mockRouteRequest.mockReturnValue(null); // Simulate router not finding a handler
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'IntentRequest', intent: { name: 'UnknownIntent' } } };
+    // *** USE HELPER ***
+    const expectedResponse = createExpectedTellResponse("Sorry, I didn't understand that request or I can't handle it right now.");
+    // mockBuildTellResponse.mockReturnValue(expectedResponse);
 
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
+    const response = await handler(event, MOCK_CONTEXT);
 
-    // Assert
-    expect(response.statusCode).toBe(502); // Default Bad Gateway for upstream errors
-    const body = JSON.parse(response.body);
-    expect(body.message).toBe('Upstream Cloud Function returned status 403.');
-    expect(body.errorDetails).toBe(upstreamError.message);
-    expect(mockCallGcpFunction).toHaveBeenCalledTimes(1);
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        errStatusCode: 403,
-        errResponseBodyPreview: 'Forbidden access',
-      }),
-      'Error occurred during GCP Cloud Function call.'
-    );
+    expect(response).toEqual(expectedResponse); // Should match full structure now
+    expect(mockRouteRequest).toHaveBeenCalledWith(event);
+    expect(mockSelectedHandler).not.toHaveBeenCalled();
+    expect(mockLoggerInstance.warn).toHaveBeenCalledWith(expect.objectContaining({ requestType: 'IntentRequest', intentName: 'UnknownIntent' }), 'No handler found for this request. Sending fallback response.');
   });
 
-  it('should return 502 if callGcpFunction rejects with a JSON parse error', async () => {
-    // Arrange
-    const parseError = new Error(
-      'Failed to parse Cloud Function JSON response'
-    );
-    parseError.statusCode = 200; // Status might still be OK
-    parseError.responseBody = '<!DOCTYPE html>...'; // Non-JSON response
-    parseError.isParseError = true;
-    parseError.isApiClientError = true;
-    mockCallGcpFunction.mockRejectedValue(parseError);
+  it('should return empty object for SessionEndedRequest when router returns null', async () => {
+    mockRouteRequest.mockReturnValue(null); // Router returns null for SessionEnded
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'SessionEndedRequest', reason: 'USER_INITIATED' } };
 
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
+    const response = await handler(event, MOCK_CONTEXT);
 
-    // Assert
-    expect(response.statusCode).toBe(502);
-    const body = JSON.parse(response.body);
-    expect(body.message).toBe(
-      'Failed to parse upstream Cloud Function response.'
-    );
-    expect(body.errorDetails).toBe(parseError.message);
-    expect(mockCallGcpFunction).toHaveBeenCalledTimes(1);
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        errIsParse: true,
-        errResponseBodyPreview: expect.stringContaining('<!DOCTYPE html>'),
-      }),
-      'Error occurred during GCP Cloud Function call.'
-    );
+    expect(response).toEqual({}); // Still expect empty object
+    expect(mockRouteRequest).toHaveBeenCalledWith(event);
+    expect(mockSelectedHandler).not.toHaveBeenCalled();
+    expect(mockLoggerInstance.info).toHaveBeenCalledWith('SessionEndedRequest received. No response needed.');
+    expect(mockBuildTellResponse).not.toHaveBeenCalled(); // Ensure no error response was built
   });
 
-  it('should return 504 if callGcpFunction rejects with a network error', async () => {
-    // Arrange
-    const networkError = new Error(
-      'Network error calling Cloud Function: connect ETIMEDOUT'
-    );
-    networkError.isNetworkError = true;
-    networkError.isApiClientError = true;
-    mockCallGcpFunction.mockRejectedValue(networkError);
+  // --- Unexpected Error Handling Test ---
+  it('should return generic error response if the selected handler throws an unexpected error', async () => {
+    const handlerError = new Error("Handler crashed!");
+    mockSelectedHandler.mockRejectedValue(handlerError); // Make the handler throw
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'LaunchRequest' } };
+    // *** USE HELPER ***
+    const expectedResponse = createExpectedTellResponse("Sorry, something went wrong. Please try again later.");
+    // mockBuildTellResponse.mockReturnValue(expectedResponse);
 
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
 
-    // Assert
-    expect(response.statusCode).toBe(504); // Gateway Timeout for network issues
-    const body = JSON.parse(response.body);
-    expect(body.message).toBe(
-      'Network error reaching upstream Cloud Function.'
-    );
-    expect(body.errorDetails).toBe(networkError.message);
-    expect(mockCallGcpFunction).toHaveBeenCalledTimes(1);
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      expect.objectContaining({ errIsNetwork: true }),
-      'Error occurred during GCP Cloud Function call.'
-    );
+    const response = await handler(event, MOCK_CONTEXT);
+
+    expect(response).toEqual(expectedResponse); // Should match full structure now
+    expect(mockSelectedHandler).toHaveBeenCalled();
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith(expect.objectContaining({
+      errName: 'Error',
+      errMessage: 'Handler crashed!',
+    }), 'Unhandled error during Lambda execution.');
   });
 
-  it('should return 502 for generic errors from callGcpFunction', async () => {
-    // Arrange
-    const genericError = new Error('Something unexpected happened');
-    // Note: We don't set custom flags like isNetworkError etc.
-    mockCallGcpFunction.mockRejectedValue(genericError);
+  it('should return generic error response if routing itself throws an error', async () => {
+    const routingError = new Error("Router exploded!");
+    mockRouteRequest.mockImplementation(() => { throw routingError; }); // Make router throw
+    const event = { ...MOCK_EVENT_BASE, request: { type: 'LaunchRequest' } };
+    // *** USE HELPER ***
+    const expectedResponse = createExpectedTellResponse("Sorry, something went wrong. Please try again later.");
+    // mockBuildTellResponse.mockReturnValue(expectedResponse);
 
-    // Act
-    const response = await handler(MOCK_EVENT, MOCK_CONTEXT);
+    const response = await handler(event, MOCK_CONTEXT);
 
-    // Assert
-    expect(response.statusCode).toBe(502); // Default Bad Gateway
-    const body = JSON.parse(response.body);
-    expect(body.message).toBe('Error calling upstream Cloud Function.'); // Default message
-    expect(body.errorDetails).toBe(genericError.message);
-    expect(mockCallGcpFunction).toHaveBeenCalledTimes(1);
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        errName: 'Error',
-        errMessage: 'Something unexpected happened',
-      }),
-      'Error occurred during GCP Cloud Function call.'
-    );
+    expect(response).toEqual(expectedResponse); // Should match full structure now
+    expect(mockRouteRequest).toHaveBeenCalled();
+    expect(mockSelectedHandler).not.toHaveBeenCalled();
+    expect(mockLoggerInstance.error).toHaveBeenCalledWith(expect.objectContaining({
+      errName: 'Error',
+      errMessage: 'Router exploded!',
+    }), 'Unhandled error during Lambda execution.');
   });
 });
