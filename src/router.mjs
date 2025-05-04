@@ -6,8 +6,12 @@ import { handleGetDailyProductionIntent } from './intentHandlers/getDailyProduct
 import { handleHelpIntent } from './intentHandlers/amazonHelpIntentHandler.mjs';
 import { handleStopOrCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs';
 import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
-// --- Import the SessionEnded handler ---
 import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
+// --- Import the GetOnlineStatus handler ---
+import { handleGetOnlineStatusIntent } from './intentHandlers/getOnlineStatusIntentHandler.mjs';
+// Import other handlers here as they are created
+// import { handleGetSummaryIntent } from './intentHandlers/getSummaryIntentHandler.mjs';
+
 
 const log = logger.child({ module: 'router' });
 
@@ -39,6 +43,10 @@ export const routeRequest = (event) => {
       case 'GetDailyProductionIntent':
         log.info('Routing to GetDailyProductionIntent handler.');
         return handleGetDailyProductionIntent;
+        // --- Add case for GetOnlineStatusIntent ---
+      case 'GetOnlineStatusIntent':
+        log.info('Routing to GetOnlineStatusIntent handler.');
+        return handleGetOnlineStatusIntent;
       case 'AMAZON.HelpIntent':
         log.info('Routing to AMAZON.HelpIntent handler.');
         return handleHelpIntent;
@@ -50,9 +58,6 @@ export const routeRequest = (event) => {
         log.info('Routing to AMAZON.FallbackIntent handler.');
         return handleFallbackIntent;
         // --- Add cases for other specific intents later ---
-        // case 'GetOnlineStatusIntent':
-        //     log.info('Routing to GetOnlineStatusIntent handler.');
-        //     return handleGetOnlineStatusIntent;
         // case 'GetSummaryIntent':
         //     log.info('Routing to GetSummaryIntent handler.');
         //     return handleGetSummaryIntent;
@@ -64,8 +69,7 @@ export const routeRequest = (event) => {
 
   if (requestType === 'SessionEndedRequest') {
     log.info('Routing to SessionEndedRequest handler.');
-    // --- Return the actual handler ---
-    return handleSessionEndedRequest; // Return the handler function
+    return handleSessionEndedRequest;
   }
 
   // --- Fallback for unknown request types ---
