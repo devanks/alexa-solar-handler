@@ -3,12 +3,12 @@ import logger from './utils/logger.mjs';
 import { handleLaunchRequest } from './intentHandlers/launchRequestHandler.mjs';
 import { handleGetCurrentPowerIntent } from './intentHandlers/getCurrentPowerIntentHandler.mjs';
 import { handleGetDailyProductionIntent } from './intentHandlers/getDailyProductionIntentHandler.mjs';
-// --- Import the Help handler ---
 import { handleHelpIntent } from './intentHandlers/amazonHelpIntentHandler.mjs';
-// Import other handlers here as they are created (Stop, Fallback, etc.)
+// --- Import the Stop/Cancel handler ---
+import { handleStopOrCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs';
+// Import other handlers here as they are created (Fallback, etc.)
 // import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
 // import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
-// import { handleStopOrCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs'; // Example
 
 const log = logger.child({ module: 'router' });
 
@@ -40,10 +40,14 @@ export const routeRequest = (event) => {
       case 'GetDailyProductionIntent':
         log.info('Routing to GetDailyProductionIntent handler.');
         return handleGetDailyProductionIntent;
-        // --- Add case for Help Intent ---
       case 'AMAZON.HelpIntent':
         log.info('Routing to AMAZON.HelpIntent handler.');
         return handleHelpIntent;
+        // --- Add cases for Stop and Cancel Intents ---
+      case 'AMAZON.StopIntent':
+      case 'AMAZON.CancelIntent':
+        log.info(`Routing ${intentName} to Stop/Cancel handler.`); // Log specific intent
+        return handleStopOrCancelIntent;
         // --- Add cases for other intents later ---
         // case 'GetOnlineStatusIntent':
         //     log.info('Routing to GetOnlineStatusIntent handler.');
@@ -51,10 +55,6 @@ export const routeRequest = (event) => {
         // case 'GetSummaryIntent':
         //     log.info('Routing to GetSummaryIntent handler.');
         //     return handleGetSummaryIntent;
-        // case 'AMAZON.StopIntent':
-        // case 'AMAZON.CancelIntent':
-        //      log.info('Routing to Stop/Cancel handler.');
-        //      return handleStopOrCancelIntent;
         // case 'AMAZON.FallbackIntent':
         //      log.info('Routing to FallbackIntent handler.');
         //      return handleFallbackIntent;
