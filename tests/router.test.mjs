@@ -10,29 +10,25 @@ const mockStopCancelHandler = jest.fn();
 const mockFallbackHandler = jest.fn();
 const mockSessionEndedHandler = jest.fn();
 const mockGetOnlineStatusHandler = jest.fn();
-const mockGetSummaryHandler = jest.fn(); // Mock for the GetSummaryIntent handler
-
+const mockGetSummaryHandler = jest.fn();
 
 // --- Mock the modules ---
 jest.unstable_mockModule('../src/intentHandlers/launchRequestHandler.mjs', () => ({ handleLaunchRequest: mockLaunchHandler }));
 jest.unstable_mockModule('../src/intentHandlers/getCurrentPowerIntentHandler.mjs', () => ({ handleGetCurrentPowerIntent: mockCurrentPowerHandler }));
 jest.unstable_mockModule('../src/intentHandlers/getDailyProductionIntentHandler.mjs', () => ({ handleGetDailyProductionIntent: mockDailyProductionHandler }));
 jest.unstable_mockModule('../src/intentHandlers/getOnlineStatusIntentHandler.mjs', () => ({ handleGetOnlineStatusIntent: mockGetOnlineStatusHandler }));
-// --- Ensure GetSummaryIntent handler is mocked ---
 jest.unstable_mockModule('../src/intentHandlers/getSummaryIntentHandler.mjs', () => ({ handleGetSummaryIntent: mockGetSummaryHandler }));
-// -------------------------------------------------
 jest.unstable_mockModule('../src/intentHandlers/amazonHelpIntentHandler.mjs', () => ({ handleHelpIntent: mockHelpHandler }));
-jest.unstable_mockModule('../src/intentHandlers/stopCancelIntentHandler.mjs', () => ({ handleStopCancelIntent: mockStopCancelHandler })); // Correct mock name
+jest.unstable_mockModule('../src/intentHandlers/stopCancelIntentHandler.mjs', () => ({ handleStopCancelIntent: mockStopCancelHandler }));
 jest.unstable_mockModule('../src/intentHandlers/fallbackIntentHandler.mjs', () => ({ handleFallbackIntent: mockFallbackHandler }));
 jest.unstable_mockModule('../src/intentHandlers/sessionEndedRequestHandler.mjs', () => ({ handleSessionEndedRequest: mockSessionEndedHandler }));
-
 
 // --- Mock the logger ---
 const mockLogger = {
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
-    debug: jest.fn(),
+    debug: jest.fn(), // Keep debug if you want to assert specific debug logs later
     child: jest.fn(),
 };
 
@@ -42,7 +38,6 @@ beforeAll(async () => {
     const routerModule = await import('../src/router.mjs');
     routeRequest = routerModule.routeRequest;
 });
-
 
 describe('Request Router', () => {
 
@@ -67,8 +62,11 @@ describe('Request Router', () => {
         const event = createMockEvent('LaunchRequest');
         const handler = routeRequest(event, mockLogger);
         expect(handler).toBe(mockLaunchHandler);
-        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'LaunchRequest' }, 'Routing request type.');
-        expect(mockLogger.debug).toHaveBeenCalledWith('Matched LaunchRequest.');
+        // *** UPDATED Assertions ***
+        expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---');
+        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'LaunchRequest' }, 'Determined request type.');
+        expect(mockLogger.info).toHaveBeenCalledWith('Matched LaunchRequest'); // Changed from debug
+        // *** ------------------ ***
     });
 
     // --- Parameterized Tests for IntentRequest Routing ---
@@ -76,14 +74,12 @@ describe('Request Router', () => {
         { intentName: 'GetCurrentPowerIntent', expectedHandler: mockCurrentPowerHandler },
         { intentName: 'GetDailyProductionIntent', expectedHandler: mockDailyProductionHandler },
         { intentName: 'GetOnlineStatusIntent', expectedHandler: mockGetOnlineStatusHandler },
-        // --- Added test case for GetSummaryIntent ---
         { intentName: 'GetSummaryIntent', expectedHandler: mockGetSummaryHandler },
-        // -------------------------------------------
         { intentName: 'AMAZON.HelpIntent', expectedHandler: mockHelpHandler },
         { intentName: 'AMAZON.StopIntent', expectedHandler: mockStopCancelHandler },
         { intentName: 'AMAZON.CancelIntent', expectedHandler: mockStopCancelHandler },
         { intentName: 'AMAZON.FallbackIntent', expectedHandler: mockFallbackHandler },
-        { intentName: 'UnknownIntent', expectedHandler: mockFallbackHandler }, // Routes to fallback
+        { intentName: 'UnknownIntent', expectedHandler: mockFallbackHandler },
     ];
 
     test.each(intentRoutingTestCases)(
@@ -93,68 +89,89 @@ describe('Request Router', () => {
             const event = createMockEvent('IntentRequest', intentName);
 
             // Act
-            const handler = routeRequest(event, mockLogger); // Pass logger
+            const handler = routeRequest(event, mockLogger);
 
             // Assert Handler
             expect(handler).toBe(expectedHandler);
 
-            // Assert General Intent Routing Logs
-            expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'IntentRequest' }, 'Routing request type.');
-            expect(mockLogger.info).toHaveBeenCalledWith({ intentName: intentName }, 'Routing intent name.');
+            // *** UPDATED Assertions ***
+            expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---');
+            expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'IntentRequest' }, 'Determined request type.');
+            expect(mockLogger.info).toHaveBeenCalledWith({ intentName: intentName }, 'Determined intent name.');
 
-            // Assert Specific Debug Log (or warn for UnknownIntent)
+            // Assert Specific Log (info or warn)
             if (intentName === 'UnknownIntent') {
-                expect(mockLogger.warn).toHaveBeenCalledWith(`Unknown intent name encountered: ${intentName}`);
-                expect(mockLogger.debug).toHaveBeenCalledWith('Routing unknown intent to FallbackIntent.');
+                expect(mockLogger.warn).toHaveBeenCalledWith({ intentName }, 'Unknown intent name encountered.');
             } else if (intentName === 'AMAZON.StopIntent' || intentName === 'AMAZON.CancelIntent') {
-                expect(mockLogger.debug).toHaveBeenCalledWith(`Matched ${intentName}.`);
+                // Match the combined log message from the code
+                expect(mockLogger.info).toHaveBeenCalledWith('Matched AMAZON.Stop/CancelIntent');
             } else {
-                // This covers GetCurrentPower, GetDailyProduction, GetOnlineStatus, GetSummary, Help, Fallback
-                expect(mockLogger.debug).toHaveBeenCalledWith(`Matched ${intentName}.`);
+                expect(mockLogger.info).toHaveBeenCalledWith(`Matched ${intentName}`);
             }
+            // *** ------------------ ***
         }
     );
 
     // --- Test for SessionEndedRequest ---
     it('should return the SessionEndedRequest handler for SessionEndedRequest type', () => {
         const event = createMockEvent('SessionEndedRequest');
-        const handler = routeRequest(event, mockLogger); // Pass logger
+        const handler = routeRequest(event, mockLogger);
 
         expect(handler).toBe(mockSessionEndedHandler);
-        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'SessionEndedRequest' }, 'Routing request type.');
-        expect(mockLogger.debug).toHaveBeenCalledWith('Matched SessionEndedRequest.');
+        // *** UPDATED Assertions ***
+        expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---');
+        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'SessionEndedRequest' }, 'Determined request type.');
+        expect(mockLogger.info).toHaveBeenCalledWith('Matched SessionEndedRequest'); // Changed from debug
+        // *** ------------------ ***
     });
 
     // --- Tests for Unknown Request Type and Invalid Event ---
     it('should return null for an unknown request type', () => {
         const event = createMockEvent('UnknownRequestType');
-        const handler = routeRequest(event, mockLogger); // Pass logger
+        const handler = routeRequest(event, mockLogger);
 
         expect(handler).toBeNull();
-        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'UnknownRequestType' }, 'Routing request type.');
-        expect(mockLogger.warn).toHaveBeenCalledWith(`Unknown request type encountered: UnknownRequestType`);
+        // *** UPDATED Assertions ***
+        expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---');
+        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'UnknownRequestType' }, 'Determined request type.');
+        expect(mockLogger.warn).toHaveBeenCalledWith({ requestType: 'UnknownRequestType' }, 'No matching route found, returning null.'); // Changed message
+        // *** ------------------ ***
     });
 
     it('should return null if event or request structure is invalid/missing', () => {
         expect(routeRequest(null, mockLogger)).toBeNull();
-        expect(mockLogger.error).toHaveBeenCalledWith('Request object or request type is missing.');
-        mockLogger.error.mockClear(); // Clear for next check
+        // *** UPDATED Assertions ***
+        expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---'); // Called even with null event
+        expect(mockLogger.error).toHaveBeenCalledWith('Router Error: Event missing request type.');
+        // *** ------------------ ***
+        mockLogger.error.mockClear();
+        mockLogger.info.mockClear(); // Clear info too
 
         expect(routeRequest({}, mockLogger)).toBeNull();
-        expect(mockLogger.error).toHaveBeenCalledWith('Request object or request type is missing.');
+        // *** UPDATED Assertions ***
+        expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---');
+        expect(mockLogger.error).toHaveBeenCalledWith('Router Error: Event missing request type.');
+        // *** ------------------ ***
         mockLogger.error.mockClear();
+        mockLogger.info.mockClear();
 
         expect(routeRequest({ request: {} }, mockLogger)).toBeNull();
-        expect(mockLogger.error).toHaveBeenCalledWith('Request object or request type is missing.');
+        // *** UPDATED Assertions ***
+        expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---');
+        expect(mockLogger.error).toHaveBeenCalledWith('Router Error: Event missing request type.');
+        // *** ------------------ ***
     });
 
     it('should route to fallback if IntentRequest is missing intent name', () => {
-        const event = { request: { type: 'IntentRequest' } }; // Missing intent obj/name
+        const event = { request: { type: 'IntentRequest', requestId: 'req-missing-intent' } }; // Missing intent obj/name
         const handler = routeRequest(event, mockLogger);
         expect(handler).toBe(mockFallbackHandler);
-        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'IntentRequest' }, 'Routing request type.');
-        expect(mockLogger.info).toHaveBeenCalledWith({ intentName: undefined }, 'Routing intent name.');
-        expect(mockLogger.error).toHaveBeenCalledWith('IntentRequest is missing intent name.');
+        // *** UPDATED Assertions ***
+        expect(mockLogger.info).toHaveBeenCalledWith('--- Router received event ---');
+        expect(mockLogger.info).toHaveBeenCalledWith({ requestType: 'IntentRequest' }, 'Determined request type.');
+        expect(mockLogger.info).toHaveBeenCalledWith({ intentName: undefined }, 'Determined intent name.');
+        expect(mockLogger.error).toHaveBeenCalledWith('Router Error: IntentRequest missing intent name.');
+        // *** ------------------ ***
     });
 
 });

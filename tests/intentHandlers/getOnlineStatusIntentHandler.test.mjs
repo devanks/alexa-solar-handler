@@ -9,8 +9,7 @@ describe('GetOnlineStatusIntent Handler', () => {
     let mockLogger;
     let mockGcpClient;
     let mockEvent;
-    // No config needed yet, but keep placeholder if needed later
-    // let mockConfig;
+    let mockConfig;
 
     beforeEach(() => {
         // Reset mocks before each test
@@ -22,10 +21,7 @@ describe('GetOnlineStatusIntent Handler', () => {
             child: jest.fn(() => mockLogger),
         };
 
-        mockGcpClient = {
-            // Mock the specific function we expect to call
-            getSystemStatus: jest.fn(),
-        };
+        mockGcpClient = jest.fn();
 
         mockEvent = {
             // Basic structure, specific intent name
@@ -38,7 +34,10 @@ describe('GetOnlineStatusIntent Handler', () => {
             // Add other event parts if necessary for future tests
         };
 
-        // mockConfig = {}; // If config becomes necessary
+        mockConfig = {
+            targetAudience: 'test-audience',
+            idToken: 'test-token',
+        };
     });
 
     // --- Parameterized Tests for Successful Responses ---
@@ -55,15 +54,15 @@ describe('GetOnlineStatusIntent Handler', () => {
         ],
     ])('should return correct status when system is %s', async (mockStatusResult, expectedSpeech, _description) => {
         // Arrange
-        mockGcpClient.getSystemStatus.mockResolvedValue(mockStatusResult);
+        mockGcpClient.mockResolvedValue(mockStatusResult);
         const expectedResponse = buildTellResponse(expectedSpeech);
 
         // Act
-        const result = await handleGetOnlineStatusIntent(mockEvent, mockLogger, mockGcpClient);
+        const result = await handleGetOnlineStatusIntent(mockEvent, mockLogger, mockGcpClient, mockConfig);
 
         // Assert
         expect(mockLogger.info).toHaveBeenCalledWith('Handling GetOnlineStatusIntent.');
-        expect(mockGcpClient.getSystemStatus).toHaveBeenCalledTimes(1);
+        expect(mockGcpClient).toHaveBeenCalledTimes(1);
         expect(mockLogger.debug).toHaveBeenCalledTimes(2); // Called before and after gcpClient call
         expect(mockLogger.debug).toHaveBeenCalledWith('Calling gcpClient.getSystemStatus...');
         expect(mockLogger.debug).toHaveBeenCalledWith({ statusResult: mockStatusResult }, 'Received response from gcpClient.getSystemStatus.');
@@ -77,16 +76,16 @@ describe('GetOnlineStatusIntent Handler', () => {
     it('should return an error message if the backend call fails', async () => {
         // Arrange
         const backendError = new Error("Backend unavailable");
-        mockGcpClient.getSystemStatus.mockRejectedValue(backendError);
+        mockGcpClient.mockRejectedValue(backendError);
         const expectedSpeech = "Sorry, I couldn't retrieve the system status right now. There might be a connection issue. Please try again later.";
         const expectedResponse = buildTellResponse(expectedSpeech);
 
         // Act
-        const result = await handleGetOnlineStatusIntent(mockEvent, mockLogger, mockGcpClient);
+        const result = await handleGetOnlineStatusIntent(mockEvent, mockLogger, mockGcpClient, mockConfig);
 
         // Assert
         expect(mockLogger.info).toHaveBeenCalledWith('Handling GetOnlineStatusIntent.');
-        expect(mockGcpClient.getSystemStatus).toHaveBeenCalledTimes(1);
+        expect(mockGcpClient).toHaveBeenCalledTimes(1);
         expect(mockLogger.debug).toHaveBeenCalledTimes(1); // Only called before the call
         expect(mockLogger.debug).toHaveBeenCalledWith('Calling gcpClient.getSystemStatus...');
         expect(mockLogger.error).toHaveBeenCalledTimes(1);
@@ -114,16 +113,16 @@ describe('GetOnlineStatusIntent Handler', () => {
     describe('Handling Unexpected Backend Responses', () => {
         test.each(unexpectedResponses)('should return an error message for %s', async (mockStatusResult, _description) => {
             // Arrange
-            mockGcpClient.getSystemStatus.mockResolvedValue(mockStatusResult);
+            mockGcpClient.mockResolvedValue(mockStatusResult);
             const expectedSpeech = "Sorry, I received an unexpected status format from the system. I can't determine if it's online right now.";
             const expectedResponse = buildTellResponse(expectedSpeech);
 
             // Act
-            const result = await handleGetOnlineStatusIntent(mockEvent, mockLogger, mockGcpClient);
+            const result = await handleGetOnlineStatusIntent(mockEvent, mockLogger, mockGcpClient, mockConfig);
 
             // Assert
             expect(mockLogger.info).toHaveBeenCalledWith('Handling GetOnlineStatusIntent.');
-            expect(mockGcpClient.getSystemStatus).toHaveBeenCalledTimes(1);
+            expect(mockGcpClient).toHaveBeenCalledTimes(1);
             expect(mockLogger.debug).toHaveBeenCalledTimes(2); // Called before and after gcpClient call
             expect(mockLogger.debug).toHaveBeenCalledWith({ statusResult: mockStatusResult }, 'Received response from gcpClient.getSystemStatus.');
             expect(mockLogger.warn).toHaveBeenCalledTimes(1);

@@ -1,98 +1,58 @@
 // src/utils/gcpAuth.mjs
 import { GoogleAuth } from 'google-auth-library';
-import logger from './logger.mjs';
 
-export const generateIdToken = async (
-  serviceAccountCredentials,
-  targetAudience
-) => {
-  const log = logger.child({ utility: 'gcpAuth' });
-
-  /* ---------- validation of inputs (unchanged) ---------- */
-  if (
-    !serviceAccountCredentials ||
-    typeof serviceAccountCredentials !== 'object' ||
-    !serviceAccountCredentials.client_email ||
-    !serviceAccountCredentials.private_key
-  ) {
-    log.error('Invalid or missing service account credentials provided.');
-    return null;
+export const generateIdToken = async (credentials, targetAudience, log) => {
+  // Ensure log is valid at the start
+  if (typeof log?.info !== 'function') {
+    console.error("CRITICAL: Invalid logger passed to generateIdToken");
+    // Attempt to use console as a fallback for this critical error
+    console.error({ credentials: !!credentials, targetAudience, log }, "generateIdToken initial check");
+    return null; // Cannot proceed without logger
   }
-  if (!targetAudience || typeof targetAudience !== 'string') {
-    log.error('Invalid or missing target audience provided.');
+
+  // ... initial checks for credentials, targetAudience ...
+  if (!credentials || !targetAudience) {
+    log.error('Missing credentials or targetAudience for generateIdToken');
     return null;
   }
 
   try {
-    log.info(
-      { targetAudience },
-      'Attempting to generate ID token via idTokenProvider.'
-    );
-
-    /* ---------------- obtain IdTokenClient ---------------- */
-    const auth = new GoogleAuth({ credentials: serviceAccountCredentials });
-
+    const auth = new GoogleAuth({ credentials });
     log.info('Calling auth.getIdTokenClient()...');
     const client = await auth.getIdTokenClient(targetAudience);
+    log.info({ clientType: typeof client }, 'auth.getIdTokenClient() resolved.');
 
-    /* <─── 1.  SUCCESS LOG THAT THE TEST EXPECTS ───> */
-    log.info(
-      { clientType: typeof client },
-      'auth.getIdTokenClient() resolved.'
-    );
-
-    /* ------------- 2.  DEFENSIVE VALIDATION --------------- */
-    if (
-      !client ||
-      typeof client !== 'object' ||
-      !client.idTokenProvider ||
-      typeof client.idTokenProvider.fetchIdToken !== 'function'
-    ) {
-      log.debug(
-        { clientKeys: Object.keys(client || {}) },
-        'Available keys on the received client object.'
-      );
-
-      log.error(
-        {
-          clientExists: !!client,
-          clientType: typeof client,
-          providerExists:
-            !!client?.idTokenProvider &&
-            typeof client?.idTokenProvider.fetchIdToken === 'function',
-        },
-        'Client or idTokenProvider or fetchIdToken function is missing/invalid.'
-      );
+    if (!client?.idTokenProvider?.fetchIdToken) {
+      log.error('Failed to get a valid ID token client or provider method.');
       return null;
     }
-
-    /* ---------------- obtain the ID-token ------------------ */
     log.info('Calling client.idTokenProvider.fetchIdToken()...');
-    const idToken = await client.idTokenProvider.fetchIdToken(targetAudience);
-    log.info('client.idTokenProvider.fetchIdToken() resolved.');
+    const token = await client.idTokenProvider.fetchIdToken(targetAudience);
+    log.info('client.idTokenProvider.fetchIdToken() resolved.'); // <-- Last log seen
 
-    if (!idToken) {
-      log.error(
-        'Failed to retrieve ID token (fetchIdToken returned null/undefined).'
-      );
+    // --- START ADDED DEBUG LOGGING ---
+    log.debug({ tokenValue: token, tokenType: typeof token }, 'Token value received from fetchIdToken.'); // What is the token?
+
+    if (!token) {
+      log.error('fetchIdToken returned null, undefined, or empty string.'); // More specific error
       return null;
     }
 
-    log.info(
-      { targetAudience, tokenLength: idToken.length },
-      'Successfully generated ID token via idTokenProvider.'
-    );
-    return idToken;
+    // If we get here, token is truthy
+    log.debug({ tokenLength: token?.length }, 'Token is truthy, attempting final log.');
+    // --- END ADDED DEBUG LOGGING ---
+
+    // This is the log that was missing
+    log.info({ targetAudience, tokenLength: token?.length }, 'Successfully generated ID token via idTokenProvider.');
+    return token;
+
   } catch (error) {
-    log.error(
-      {
-        errName: error.name,
-        errMessage: error.message,
-        errStack: error.stack?.split('\n')[1]?.trim(),
-        targetAudience,
-      },
-      'Error generating Google ID token.'
-    );
+    log.error({
+      errName: error?.name,
+      errMessage: error?.message,
+      errStack: error?.stack,
+      targetAudience
+    }, 'Error during ID token generation process.');
     return null;
   }
 };

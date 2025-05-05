@@ -29,6 +29,7 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
     let mockLogger;
     let mockGcpClient;
     let mockEvent;
+    let mockHandlerConfig;
 
     beforeEach(() => {
         // Reset mocks before each test
@@ -38,12 +39,15 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
             info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(),
             child: jest.fn(() => mockLogger),
         };
-        mockGcpClient = {
-            getSystemSummary: jest.fn(),
-        };
+        mockGcpClient = jest.fn();
         mockEvent = {
             request: { type: 'IntentRequest', intent: { name: 'GetSummaryIntent' } },
         };
+        mockHandlerConfig = { // Define mock config
+            targetAudience: 'mock-audience',
+            idToken: 'mock-token'
+        };
+
     });
 
     // --- Test Cases ---
@@ -51,18 +55,20 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
     test('should return full summary when API succeeds with all data', async () => {
         // Arrange
         const mockApiResponse = { currentPowerW: 1500, dailyProductionKWh: 5.5, isOnline: true };
-        mockGcpClient.getSystemSummary.mockResolvedValue(mockApiResponse);
+        mockGcpClient.mockResolvedValue(mockApiResponse);
         const expectedSpeech = `Currently generating 1500 formatted W. Today's production is 5.5 formatted kWh so far. The system is online.`;
         const expectedResponse = buildTellResponse(expectedSpeech);
 
         // Act
-        const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient);
+        const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient, mockHandlerConfig);
 
         // Assert
+        console.log('DEBUG LOG: mockLogger.debug.mock.calls =', JSON.stringify(mockLogger.debug.mock.calls));
+
         expect(mockLogger.info).toHaveBeenCalledWith('Handling GetSummaryIntent.');
-        expect(mockGcpClient.getSystemSummary).toHaveBeenCalledTimes(1);
-        expect(mockLogger.debug).toHaveBeenCalledWith('Calling gcpClient.getSystemSummary...');
-        expect(mockLogger.debug).toHaveBeenCalledWith({ summaryResult: mockApiResponse }, 'Received response from gcpClient.getSystemSummary.');
+        expect(mockGcpClient).toHaveBeenCalledTimes(1);
+        expect(mockLogger.debug.mock.calls[0]).toEqual(['Calling GCP function for summary data.']);
+        expect(mockLogger.debug.mock.calls[1]).toEqual([{ summaryResult: mockApiResponse }, 'Received response from gcpClient.getSystemSummary.']);
         expect(mockFormatPower).toHaveBeenCalledWith(1500);
         expect(mockFormatEnergy).toHaveBeenCalledWith(5.5);
         expect(result).toEqual(expectedResponse);
@@ -77,15 +83,15 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
     test('should handle offline status correctly in summary', async () => {
         // Arrange
         const mockApiResponse = { currentPowerW: 200, dailyProductionKWh: 1.2, isOnline: false };
-        mockGcpClient.getSystemSummary.mockResolvedValue(mockApiResponse);
+        mockGcpClient.mockResolvedValue(mockApiResponse);
         const expectedSpeech = `Currently generating 200 formatted W. Today's production is 1.2 formatted kWh so far. The system is reporting as offline.`;
         const expectedResponse = buildTellResponse(expectedSpeech);
 
         // Act
-        const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient);
+        const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient, mockHandlerConfig);
 
         // Assert
-        expect(mockGcpClient.getSystemSummary).toHaveBeenCalledTimes(1);
+        expect(mockGcpClient).toHaveBeenCalledTimes(1);
         expect(mockFormatPower).toHaveBeenCalledWith(200);
         expect(mockFormatEnergy).toHaveBeenCalledWith(1.2);
         expect(result).toEqual(expectedResponse);
@@ -99,15 +105,15 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
     test('should handle zero production correctly in summary', async () => {
         // Arrange
         const mockApiResponse = { currentPowerW: 50, dailyProductionKWh: 0, isOnline: true };
-        mockGcpClient.getSystemSummary.mockResolvedValue(mockApiResponse);
+        mockGcpClient.mockResolvedValue(mockApiResponse);
         const expectedSpeech = `Currently generating 50 formatted W. There has been no production recorded yet today. The system is online.`;
         const expectedResponse = buildTellResponse(expectedSpeech);
 
         // Act
-        const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient);
+        const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient, mockHandlerConfig);
 
         // Assert
-        expect(mockGcpClient.getSystemSummary).toHaveBeenCalledTimes(1);
+        expect(mockGcpClient).toHaveBeenCalledTimes(1);
         expect(mockFormatPower).toHaveBeenCalledWith(50);
         expect(mockFormatEnergy).not.toHaveBeenCalled(); // Corrected assertion
         expect(result).toEqual(expectedResponse);
@@ -136,7 +142,7 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
                                                                                                   expectedWarnMsg
                                                                                               }) => {
             // Arrange
-            mockGcpClient.getSystemSummary.mockResolvedValue(input);
+            mockGcpClient.mockResolvedValue(input);
             // Construct expected speech
             let expectedParts = [];
             let errors = false;
@@ -166,10 +172,10 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
             const expectedResponse = buildTellResponse(expectedSpeech);
 
             // Act
-            const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient);
+            const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient, mockHandlerConfig);
 
             // Assert
-            expect(mockGcpClient.getSystemSummary).toHaveBeenCalledTimes(1);
+            expect(mockGcpClient).toHaveBeenCalledTimes(1);
             expect(mockLogger.warn).toHaveBeenCalledWith(expect.any(Object), expect.stringContaining(expectedWarnMsg));
             expect(result.response.outputSpeech.text).toBe(expectedSpeech);
             expect(result.response.shouldEndSession).toBe(true);
@@ -184,15 +190,15 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
         // --- Test for null API response ---
         test('should handle null API response', async () => {
             // Arrange
-            mockGcpClient.getSystemSummary.mockResolvedValue(null);
+            mockGcpClient.mockResolvedValue(null);
             const expectedSpeech = "Sorry, I received an empty response from the system. I can't provide a summary right now.";
             const expectedResponse = buildTellResponse(expectedSpeech);
 
             // Act
-            const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient);
+            const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient, mockHandlerConfig);
 
             // Assert
-            expect(mockGcpClient.getSystemSummary).toHaveBeenCalledTimes(1);
+            expect(mockGcpClient).toHaveBeenCalledTimes(1);
             expect(mockLogger.warn).toHaveBeenCalledWith('Received null or undefined response from getSystemSummary.');
             expect(result).toEqual(expectedResponse);
             expect(mockFormatPower).not.toHaveBeenCalled();
@@ -226,15 +232,15 @@ describe('GetSummaryIntent Handler (Single API Call)', () => {
                                                                                                   expectedSpeech
                                                                                               }) => {
             // Arrange
-            mockGcpClient.getSystemSummary.mockRejectedValue(error);
+            mockGcpClient.mockRejectedValue(error);
             const expectedResponse = buildTellResponse(expectedSpeech);
 
             // Act
-            const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient);
+            const result = await handleGetSummaryIntent(mockEvent, mockLogger, mockGcpClient, mockHandlerConfig);
 
             // Assert
-            expect(mockGcpClient.getSystemSummary).toHaveBeenCalledTimes(1);
-            expect(mockLogger.error).toHaveBeenCalledWith({ err: error }, 'Error fetching system summary from backend for GetSummaryIntent.');
+            expect(mockGcpClient).toHaveBeenCalledTimes(1);
+            expect(mockLogger.error).toHaveBeenCalledWith({ err: error }, `Error fetching system summary from backend for GetSummaryIntent.`);
             expect(result).toEqual(expectedResponse); // Check the response object
             expect(mockFormatPower).not.toHaveBeenCalled();
             expect(mockFormatEnergy).not.toHaveBeenCalled();

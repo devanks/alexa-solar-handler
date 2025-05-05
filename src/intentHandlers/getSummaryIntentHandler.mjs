@@ -74,17 +74,23 @@ function determineErrorSpeech(error) {
  * @param {object} event - The Alexa request event object.
  * @param {object} log - The logger instance.
  * @param {object} gcpClient - The client for interacting with the backend service.
+ * @param {object} handlerConfig - Configuration object containing targetAudience and idToken. << ADDED PARAM
  * @returns {Promise<object>} - A promise resolving to the Alexa response object.
  */
-export const handleGetSummaryIntent = async (event, log, gcpClient) => {
+export const handleGetSummaryIntent = async (event, log, gcpClient, handlerConfig) => {
     log.info(`Handling ${INTENT_NAME}.`);
 
     let speechText;
     let overallErrorsEncountered = false; // Track errors from API call OR processing
 
     try {
-        log.debug('Calling gcpClient.getSystemSummary...');
-        const summaryResult = await gcpClient.getSystemSummary();
+        log.debug('Calling GCP function for summary data.');
+        const summaryResult = await gcpClient(
+            handlerConfig.targetAudience, // Assuming handlerConfig is the 4th arg
+            handlerConfig.idToken,
+            { dataType: 'summary' }, // Payload for summary
+            log
+        );
         log.debug({ summaryResult }, 'Received response from gcpClient.getSystemSummary.');
 
         if (!summaryResult) {
