@@ -55,7 +55,6 @@ export const handleGetCurrentPowerIntent = async (
         );
       }
 
-
       const speechText = `Your current solar production is ${formatPower(gcpResponse.currentPowerW)}.`;
 
       return buildTellResponse(speechText);

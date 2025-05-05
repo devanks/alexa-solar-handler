@@ -31,6 +31,6 @@ export default [
       // Add any other specific rules you want
     },
 
-    ignores: ['node_modules/', 'dist/', '*.json'], // Files/directories to ignore
+    ignores: ['node_modules/', 'dist/**/*', '*.json'], // Files/directories to ignore
   },
 ];

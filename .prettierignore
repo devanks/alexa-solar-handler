@@ -1,0 +1,9 @@
+# Ignore build output
+dist/
+
+# Ignore dependencies
+node_modules/
+
+# Add any other files/directories you want Prettier to skip
+# e.g., coverage reports, specific generated files, etc.
+coverage/

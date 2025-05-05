@@ -1,112 +1,98 @@
 // src/router.mjs
-import {handleLaunchRequest} from './intentHandlers/launchRequestHandler.mjs';
-import {handleGetCurrentPowerIntent} from './intentHandlers/getCurrentPowerIntentHandler.mjs';
-import {handleGetDailyProductionIntent} from './intentHandlers/getDailyProductionIntentHandler.mjs';
-import {handleGetOnlineStatusIntent} from './intentHandlers/getOnlineStatusIntentHandler.mjs';
-import {handleGetSummaryIntent} from './intentHandlers/getSummaryIntentHandler.mjs';
-import {handleHelpIntent} from './intentHandlers/amazonHelpIntentHandler.mjs';
-import {handleStopCancelIntent} from './intentHandlers/stopCancelIntentHandler.mjs';
-import {handleFallbackIntent} from './intentHandlers/fallbackIntentHandler.mjs';
-import {handleSessionEndedRequest} from './intentHandlers/sessionEndedRequestHandler.mjs';
+import { handleLaunchRequest } from './intentHandlers/launchRequestHandler.mjs';
+import { handleGetCurrentPowerIntent } from './intentHandlers/getCurrentPowerIntentHandler.mjs';
+import { handleGetDailyProductionIntent } from './intentHandlers/getDailyProductionIntentHandler.mjs';
+import { handleGetOnlineStatusIntent } from './intentHandlers/getOnlineStatusIntentHandler.mjs';
+import { handleGetSummaryIntent } from './intentHandlers/getSummaryIntentHandler.mjs';
+import { handleHelpIntent } from './intentHandlers/amazonHelpIntentHandler.mjs';
+import { handleStopCancelIntent } from './intentHandlers/stopCancelIntentHandler.mjs';
+import { handleFallbackIntent } from './intentHandlers/fallbackIntentHandler.mjs';
+import { handleSessionEndedRequest } from './intentHandlers/sessionEndedRequestHandler.mjs';
 
 export const routeRequest = (event, log) => {
+  // +++ DEBUG LOGGING +++
+  log.info('--- Router received event ---');
+  // +++ END DEBUG +++
+
+  const requestType = event?.request?.type;
+  log.info({ requestType }, 'Determined request type.');
+
+  if (!requestType) {
+    log.error('Router Error: Event missing request type.');
+    return null; // Cannot route without type
+  }
+
+  if (requestType === 'LaunchRequest') {
     // +++ DEBUG LOGGING +++
-    console.log("DEBUG: router.mjs - Received event:", JSON.stringify(event?.request, null, 2)); // Log just the request part
-    log.info('--- Router received event ---');
+    log.info('Matched LaunchRequest');
+    // +++ END DEBUG +++
+    return handleLaunchRequest;
+  }
+
+  if (requestType === 'SessionEndedRequest') {
+    // +++ DEBUG LOGGING +++
+    log.info('Matched SessionEndedRequest');
+    // +++ END DEBUG +++
+    return handleSessionEndedRequest;
+  }
+
+  if (requestType === 'IntentRequest') {
+    const intentName = event.request.intent?.name;
+    // +++ DEBUG LOGGING +++
+    log.info({ intentName }, 'Determined intent name.');
     // +++ END DEBUG +++
 
-    const requestType = event?.request?.type;
-    log.info({requestType}, 'Determined request type.');
-
-    if (!requestType) {
-        log.error('Router Error: Event missing request type.');
-        return null; // Cannot route without type
+    if (!intentName) {
+      log.error('Router Error: IntentRequest missing intent name.');
+      return handleFallbackIntent; // Or null, depending on desired behavior
     }
 
-    if (requestType === 'LaunchRequest') {
+    switch (intentName) {
+      case 'GetCurrentPowerIntent':
         // +++ DEBUG LOGGING +++
-        console.log("DEBUG: router.mjs - Matched LaunchRequest");
-        log.info('Matched LaunchRequest');
+        log.info('Matched GetCurrentPowerIntent');
         // +++ END DEBUG +++
-        return handleLaunchRequest;
-    }
-
-    if (requestType === 'SessionEndedRequest') {
+        return handleGetCurrentPowerIntent;
+      case 'GetDailyProductionIntent':
         // +++ DEBUG LOGGING +++
-        console.log("DEBUG: router.mjs - Matched SessionEndedRequest");
-        log.info('Matched SessionEndedRequest');
+        log.info('Matched GetDailyProductionIntent');
         // +++ END DEBUG +++
-        return handleSessionEndedRequest;
-    }
-
-    if (requestType === 'IntentRequest') {
-        const intentName = event.request.intent?.name;
+        return handleGetDailyProductionIntent;
+      case 'GetOnlineStatusIntent':
         // +++ DEBUG LOGGING +++
-        console.log("DEBUG: router.mjs - IntentRequest, Name:", intentName);
-        log.info({intentName}, 'Determined intent name.');
+        log.info('Matched GetOnlineStatusIntent');
         // +++ END DEBUG +++
-
-        if (!intentName) {
-            log.error('Router Error: IntentRequest missing intent name.');
-            return handleFallbackIntent; // Or null, depending on desired behavior
-        }
-
-        switch (intentName) {
-            case 'GetCurrentPowerIntent':
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Matched GetCurrentPowerIntent");
-                log.info('Matched GetCurrentPowerIntent');
-                // +++ END DEBUG +++
-                return handleGetCurrentPowerIntent;
-            case 'GetDailyProductionIntent':
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Matched GetDailyProductionIntent");
-                log.info('Matched GetDailyProductionIntent');
-                // +++ END DEBUG +++
-                return handleGetDailyProductionIntent;
-            case 'GetOnlineStatusIntent':
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Matched GetOnlineStatusIntent");
-                log.info('Matched GetOnlineStatusIntent');
-                // +++ END DEBUG +++
-                return handleGetOnlineStatusIntent;
-            case 'GetSummaryIntent':
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Matched GetSummaryIntent");
-                log.info('Matched GetSummaryIntent');
-                // +++ END DEBUG +++
-                return handleGetSummaryIntent;
-            case 'AMAZON.HelpIntent':
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Matched AMAZON.HelpIntent");
-                log.info('Matched AMAZON.HelpIntent');
-                // +++ END DEBUG +++
-                return handleHelpIntent;
-            case 'AMAZON.StopIntent':
-            case 'AMAZON.CancelIntent':
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Matched AMAZON.Stop/CancelIntent");
-                log.info('Matched AMAZON.Stop/CancelIntent');
-                // +++ END DEBUG +++
-                return handleStopCancelIntent;
-            case 'AMAZON.FallbackIntent': // Explicit fallback intent
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Matched AMAZON.FallbackIntent");
-                log.info('Matched AMAZON.FallbackIntent');
-                // +++ END DEBUG +++
-                return handleFallbackIntent;
-            default:
-                // +++ DEBUG LOGGING +++
-                console.log("DEBUG: router.mjs - Unknown intent name, using fallback handler.");
-                log.warn({intentName}, 'Unknown intent name encountered.');
-                // +++ END DEBUG +++
-                return handleFallbackIntent; // Use specific fallback handler for unknown intents
-        }
+        return handleGetOnlineStatusIntent;
+      case 'GetSummaryIntent':
+        // +++ DEBUG LOGGING +++
+        log.info('Matched GetSummaryIntent');
+        // +++ END DEBUG +++
+        return handleGetSummaryIntent;
+      case 'AMAZON.HelpIntent':
+        // +++ DEBUG LOGGING +++
+        log.info('Matched AMAZON.HelpIntent');
+        // +++ END DEBUG +++
+        return handleHelpIntent;
+      case 'AMAZON.StopIntent':
+      case 'AMAZON.CancelIntent':
+        // +++ DEBUG LOGGING +++
+        log.info('Matched AMAZON.Stop/CancelIntent');
+        // +++ END DEBUG +++
+        return handleStopCancelIntent;
+      case 'AMAZON.FallbackIntent': // Explicit fallback intent
+        // +++ DEBUG LOGGING +++
+        log.info('Matched AMAZON.FallbackIntent');
+        // +++ END DEBUG +++
+        return handleFallbackIntent;
+      default:
+        // +++ DEBUG LOGGING +++
+        log.warn({ intentName }, 'Unknown intent name encountered.');
+        // +++ END DEBUG +++
+        return handleFallbackIntent; // Use specific fallback handler for unknown intents
     }
+  }
 
-    // +++ DEBUG LOGGING +++
-    console.log("DEBUG: router.mjs - No matching request type found, returning null.");
-    log.warn({requestType}, 'No matching route found, returning null.');
-    // +++ END DEBUG +++
-    return null; // Should not be reached if logic is correct
+  log.warn({ requestType }, 'No matching route found, returning null.');
+  // +++ END DEBUG +++
+  return null; // Should not be reached if logic is correct
 };

@@ -9,18 +9,18 @@ import { buildAskResponse } from '../utils/responseBuilder.mjs';
  * @returns {Promise<object>} - A promise resolving to the Alexa response object.
  */
 export const handleHelpIntent = async (event, log) => {
-    log.info('Handling AMAZON.HelpIntent.');
+  log.info('Handling AMAZON.HelpIntent.');
 
-    // Define the help message and a reprompt in case the user doesn't respond.
-    const speechText = `You can ask me about your solar energy system. For example, try saying:
+  // Define the help message and a reprompt in case the user doesn't respond.
+  const speechText = `You can ask me about your solar energy system. For example, try saying:
         'What's my current power production?',
         'How much energy did I produce today?',
         Or, 'Is the system online?'.
         What would you like to know?`; // End with a question to guide the user.
 
-    const repromptText = "You can ask about current power, daily production, or the system status. What data are you interested in?";
+  const repromptText =
+    'You can ask about current power, daily production, or the system status. What data are you interested in?';
 
-    // Use buildAskResponse to provide help and keep the session open.
-    return buildAskResponse(speechText, repromptText);
+  // Use buildAskResponse to provide help and keep the session open.
+  return buildAskResponse(speechText, repromptText);
 };
-
