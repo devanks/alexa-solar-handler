@@ -144,7 +144,7 @@ describe('Lambda Handler (with Router)', () => {
       FAKE_AUDIENCE
     );
     // Routing
-    expect(mockRouteRequest).toHaveBeenCalledWith(mockLaunchEvent);
+    expect(mockRouteRequest).toHaveBeenCalledWith(mockLaunchEvent, mockLoggerInstance);
     // Handler Execution
     expect(mockSelectedHandler).toHaveBeenCalledTimes(1);
     expect(mockSelectedHandler).toHaveBeenCalledWith(
@@ -273,7 +273,7 @@ describe('Lambda Handler (with Router)', () => {
     const response = await handler(event, MOCK_CONTEXT);
 
     expect(response).toEqual(expectedResponse); // Should match full structure now
-    expect(mockRouteRequest).toHaveBeenCalledWith(event);
+    expect(mockRouteRequest).toHaveBeenCalledWith(event, mockLoggerInstance);
     expect(mockSelectedHandler).not.toHaveBeenCalled();
     expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -294,7 +294,7 @@ describe('Lambda Handler (with Router)', () => {
     const response = await handler(event, MOCK_CONTEXT);
 
     expect(response).toEqual({}); // Still expect empty object
-    expect(mockRouteRequest).toHaveBeenCalledWith(event);
+    expect(mockRouteRequest).toHaveBeenCalledWith(event, mockLoggerInstance);
     expect(mockSelectedHandler).not.toHaveBeenCalled();
     expect(mockLoggerInstance.info).toHaveBeenCalledWith(
       'SessionEndedRequest received. No response needed.'

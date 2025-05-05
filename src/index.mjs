@@ -67,7 +67,7 @@ export const handler = async (event, context) => {
     log.info('Successfully generated Google ID token.');
 
     // --- Routing ---
-    const selectedHandler = routeRequest(event);
+    const selectedHandler = routeRequest(event, log);
 
     // --- Execute Handler ---
     if (selectedHandler) {
